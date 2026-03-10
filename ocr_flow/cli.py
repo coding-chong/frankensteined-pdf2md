@@ -4,7 +4,11 @@
 
 import click
 from pathlib import Path
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from . import __version__
+
+console = Console()
 
 
 def interactive_ask(is_batch: bool = False) -> dict:
@@ -180,23 +184,38 @@ def process(input_path: str, output: str, config: str, verbose: bool,
         from .steps.split import detect_pdf_type
         pdf_type = detect_pdf_type(files[0])
         if verbose:
-            click.echo(f"[INFO] Auto-detected PDF type: {pdf_type}")
+            console.print(f"[dim][INFO][/dim] Auto-detected PDF type: [bold]{pdf_type}[/bold]")
 
-    # Run pipeline
+    # Run pipeline with progress bar
     pipeline = Pipeline(cfg, verbose=verbose)
-    for pdf_file in files:
-        click.echo(f"Processing: {pdf_file}")
-        try:
-            result = pipeline.run(
-                pdf_file,
-                output_dir,
-                pdf_type=pdf_type,
-                language=lang,
-                translate=translate
-            )
-            click.echo(f"Completed: {result}")
-        except Exception as e:
-            click.echo(f"Error processing {pdf_file}: {e}")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        console=console,
+        disable=len(files) == 1  # No progress bar for single file
+    ) as progress:
+        task = progress.add_task("[cyan]Processing PDFs...", total=len(files))
+
+        for pdf_file in files:
+            progress.update(task, description=f"[cyan]Processing: {pdf_file.name}")
+            try:
+                result = pipeline.run(
+                    pdf_file,
+                    output_dir,
+                    pdf_type=pdf_type,
+                    language=lang,
+                    translate=translate
+                )
+                console.print(f"[green]Done:[/green] {pdf_file.name} -> {result}")
+            except Exception as e:
+                console.print(f"[red]Error:[/red] {pdf_file.name}: {e}")
+
+            progress.advance(task)
+
+    console.print(f"\n[bold green]All done![/bold green] Output: {output_dir}")
 
 
 @cli.command()
