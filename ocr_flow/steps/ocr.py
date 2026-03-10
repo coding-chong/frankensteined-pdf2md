@@ -30,6 +30,12 @@ def ocr_pdf(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Check file size
+    file_size_mb = input_path.stat().st_size / (1024 * 1024)
+    if file_size_mb > 100:
+        print(f"  Warning: Large file ({file_size_mb:.1f}MB). OCR may take a long time.")
+    print(f"  File size: {file_size_mb:.1f}MB")
+
     url = config.umiocr.url
     language = config.umiocr.language
 
