@@ -64,22 +64,17 @@ class SelfCheck:
         }
 
     def check_mineru_api(self) -> Dict[str, Any]:
-        """Check if MinerU API token is valid."""
+        """Check if MinerU API token is configured."""
         if not self.config or not self.config.mineru.api_token:
             return {'ok': False, 'message': 'API token not configured'}
 
-        try:
-            response = requests.get(
-                "https://mineru.net/api/v4/user/info",
-                headers={"Authorization": f"Bearer {self.config.mineru.api_token}"},
-                timeout=10
-            )
-            if response.status_code == 200:
-                return {'ok': True, 'message': 'API token valid'}
-            else:
-                return {'ok': False, 'message': f'API returned status {response.status_code}'}
-        except Exception as e:
-            return {'ok': False, 'message': f'Connection failed: {e}'}
+        # Only check if token exists, don't call API
+        # The actual API call will happen during processing
+        token = self.config.mineru.api_token
+        if token and token != 'your-mineru-api-token-here':
+            return {'ok': True, 'message': f'API token configured ({token[:10]}...)'}
+
+        return {'ok': False, 'message': 'API token not configured'}
 
     def check_umi_ocr(self) -> Dict[str, Any]:
         """Check if UMI OCR service is running."""
