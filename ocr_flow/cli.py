@@ -227,7 +227,9 @@ def config():
 
 @cli.command()
 @click.option('--fix', is_flag=True, help='Try to fix issues')
-def doctor(fix: bool):
+@click.option('--translate', is_flag=True, help='Check translation dependencies (BabelDOC)')
+@click.option('--ocr', is_flag=True, help='Check OCR dependencies (UMI OCR)')
+def doctor(fix: bool, translate: bool, ocr: bool):
     """Check system dependencies and configuration."""
     from .self_check import SelfCheck
     from .config import Config
@@ -236,7 +238,7 @@ def doctor(fix: bool):
     cfg = Config.load()
 
     checker = SelfCheck(config=cfg)
-    results = checker.check_all()
+    results = checker.check_all(needs_ocr=ocr, needs_translate=translate)
 
     click.echo("\n=== OCR Flow System Check ===\n")
 

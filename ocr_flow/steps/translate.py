@@ -24,19 +24,20 @@ def translate_pdf(
     Returns:
         Path to the translated PDF
     """
-    input_path = Path(input_path)
-    output_path = Path(output_path)
+    input_path = Path(input_path).resolve()  # Use absolute path
+    output_path = Path(output_path).resolve()
     output_dir = output_path.parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build BabelDOC command
+    # Build BabelDOC command as a list
     if config.babeldoc.path:
-        cmd_base = f"uv run --directory {config.babeldoc.path} babeldoc"
+        cmd = [
+            'uv', 'run', '--directory', config.babeldoc.path, 'babeldoc',
+        ]
     else:
-        cmd_base = "babeldoc"
+        cmd = ['babeldoc']
 
-    cmd = [
-        cmd_base if ' ' not in cmd_base else cmd_base,
+    cmd.extend([
         '--files', str(input_path),
         '--output', str(output_dir),
         '--use-alternating-pages-dual',
@@ -44,7 +45,7 @@ def translate_pdf(
         '--watermark-output-mode=no_watermark',
         '--lang-in', config.babeldoc.lang_in,
         '--lang-out', config.babeldoc.lang_out,
-    ]
+    ])
 
     # Add OpenAI config if enabled
     if config.babeldoc.openai:
@@ -63,7 +64,6 @@ def translate_pdf(
         capture_output=True,
         text=True,
         timeout=timeout,
-        shell=' ' in cmd_base
     )
 
     if result.returncode != 0:
