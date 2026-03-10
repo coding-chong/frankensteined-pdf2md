@@ -67,7 +67,28 @@ def translate_pdf(
     )
 
     if result.returncode != 0:
-        raise RuntimeError(f"BabelDOC failed: {result.stderr}")
+        stderr = result.stderr.lower() if result.stderr else ""
+        stdout = result.stdout.lower() if result.stdout else ""
+        combined = stderr + stdout
+
+        # Provide user-friendly error messages
+        if "rate limit" in combined or "rate_limit" in combined:
+            raise RuntimeError("Translation API rate limited. Please wait and retry later.")
+        elif "api key" in combined or "api_key" in combined or "invalid key" in combined:
+            raise RuntimeError("Invalid API key. Check babeldoc.openai_api_key in config.")
+        elif "not found" in combined or "command not found" in combined:
+            if config.babeldoc.path:
+                raise RuntimeError(f"BabelDOC not found at {config.babeldoc.path}. Check babeldoc.path in config.")
+            else:
+                raise RuntimeError("BabelDOC not found. Install with: pip install BabelDOC")
+        elif "connection" in combined or "timeout" in combined:
+            raise RuntimeError(f"Network error connecting to translation API. Check your network connection.")
+        elif "insufficient" in combined or "quota" in combined:
+            raise RuntimeError("API quota exhausted. Check your API usage limits.")
+
+        # Generic error with truncated output
+        error_msg = result.stderr[:500] if result.stderr else result.stdout[:500] or "Unknown error"
+        raise RuntimeError(f"BabelDOC failed: {error_msg}")
 
     # Find the output file
     # BabelDOC outputs: {name}.{lang_out}.dual.pdf
