@@ -121,7 +121,7 @@ def cli():
 @click.option('--config', type=click.Path(), help='Config file path')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
 @click.option('--non-interactive', is_flag=True, help='Non-interactive mode')
-@click.option('--pdf-type', type=click.Choice(['text', 'scanned']), help='PDF type (non-interactive mode)')
+@click.option('--pdf-type', type=click.Choice(['text', 'scanned', 'auto']), default='auto', help='PDF type: text, scanned, or auto-detect (default: auto)')
 @click.option('--lang', type=click.Choice(['en', 'zh']), help='Document language (non-interactive mode)')
 @click.option('--translate/--no-translate', default=None, help='Translate to Chinese (non-interactive mode)')
 def process(input_path: str, output: str, config: str, verbose: bool,
@@ -168,15 +168,19 @@ def process(input_path: str, output: str, config: str, verbose: bool,
         translate = options['translate']
 
     # Non-interactive mode: use provided options
-    if not pdf_type:
-        click.echo("--pdf-type is required in non-interactive mode")
-        return
     if not lang:
         click.echo("--lang is required in non-interactive mode")
         return
     if translate is None:
         click.echo("--translate or --no-translate is required in non-interactive mode")
         return
+
+    # Auto-detect PDF type if needed
+    if pdf_type == 'auto':
+        from .steps.split import detect_pdf_type
+        pdf_type = detect_pdf_type(files[0])
+        if verbose:
+            click.echo(f"[INFO] Auto-detected PDF type: {pdf_type}")
 
     # Run pipeline
     pipeline = Pipeline(cfg, verbose=verbose)

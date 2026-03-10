@@ -80,3 +80,18 @@ def has_text_layer(pdf_path: Path) -> bool:
 
     doc.close()
     return False
+
+
+def detect_pdf_type(pdf_path: Path) -> str:
+    """Detect if PDF is text or scanned.
+
+    Args:
+        pdf_path: Path to the PDF file
+
+    Returns:
+        'text' if PDF has extractable text, 'scanned' otherwise
+    """
+    pdf_path = Path(pdf_path)
+    if has_text_layer(pdf_path):
+        return 'text'
+    return 'scanned'
