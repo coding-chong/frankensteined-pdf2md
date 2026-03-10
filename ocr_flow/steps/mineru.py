@@ -6,11 +6,13 @@ import os
 import time
 import zipfile
 import tempfile
+import ssl
 from pathlib import Path
 from typing import Optional
 
 import requests
 import urllib3
+import httpx
 
 # Disable SSL warnings for CDN downloads
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -162,86 +164,118 @@ class MinerUClient:
                 time.sleep(self.poll_interval)
 
     def _download_and_extract(self, zip_url: str, output_dir: Path) -> Path:
-        """Download and extract the result ZIP."""
-        import ssl
-        import urllib.request
-        import subprocess
+        """Download and extract the result ZIP.
 
-        # Try Python download first
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-        ssl_context.options |= ssl.OP_LEGACY_SERVER_CONNECT
-
+        Uses .NET WebClient on Windows (bypasses SSL issues with some antivirus software).
+        Falls back to other methods if .NET is not available.
+        """
         last_error = None
         tmp_path = None
 
-        # Method 1: Try Python urllib
-        for attempt in range(self.max_retries):
+        print("  Downloading result...")
+
+        # Method 1: Try .NET WebClient (works on Windows, bypasses antivirus SSL issues)
+        if os.name == 'nt':
             try:
-                request = urllib.request.Request(
-                    zip_url,
-                    headers={'User-Agent': 'Mozilla/5.0'}
+                import clr
+                clr.AddReference('System.Net')
+                from System.Net import WebClient, SecurityProtocolType, ServicePointManager
+                from System import Func, Boolean, Object
+                from System.Security.Cryptography.X509Certificates import X509Certificate2
+                from System.Net.Security import SslPolicyErrors
+
+                # Configure TLS
+                ServicePointManager.SecurityProtocol = (
+                    SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls
                 )
+
+                # Create a proper delegate for certificate validation
+                def validate_cert(sender, certificate, chain, errors):
+                    return True
+
+                # Set the callback using a proper delegate type
+                from System.Net.Security import RemoteCertificateValidationCallback
+                callback = RemoteCertificateValidationCallback(validate_cert)
+                ServicePointManager.ServerCertificateValidationCallback = callback
 
                 with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
                     tmp_path = tmp.name
 
-                with urllib.request.urlopen(request, timeout=120, context=ssl_context) as response:
-                    with open(tmp_path, 'wb') as f:
-                        f.write(response.read())
+                client = WebClient()
+                client.DownloadFile(zip_url, tmp_path)
 
-                # Extract
-                with zipfile.ZipFile(tmp_path, 'r') as zf:
-                    zf.extractall(output_dir)
-
-                os.unlink(tmp_path)
-
-                # Find MD file
-                return self._find_md_file(output_dir)
+                if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+                    with zipfile.ZipFile(tmp_path, 'r') as zf:
+                        zf.extractall(output_dir)
+                    os.unlink(tmp_path)
+                    return self._find_md_file(output_dir)
 
             except Exception as e:
                 last_error = e
                 if tmp_path and os.path.exists(tmp_path):
                     os.unlink(tmp_path)
-                print(f"  Download attempt {attempt + 1} failed: {e}")
-                if attempt < self.max_retries - 1:
-                    time.sleep(self.retry_delay)
+                print(f"  Method 1 (.NET WebClient) failed: {e}")
 
-        # Method 2: Fallback to PowerShell (Windows)
-        if os.name == 'nt':
-            print("  Trying PowerShell fallback...")
-            try:
-                tmp_path = os.path.join(tempfile.gettempdir(), "mineru_download.zip")
+        # Method 2: Try requests with custom SSL
+        try:
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.ssl_ import create_urllib3_context
 
-                ps_cmd = f'''
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls11
-[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {{$true}}
-$client = New-Object System.Net.WebClient
-$client.DownloadFile('{zip_url}', '{tmp_path}')
-'''
+            class SSLAdapter(HTTPAdapter):
+                def init_poolmanager(self, *args, **kwargs):
+                    ctx = create_urllib3_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+                    ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT
+                    ctx.minimum_version = ssl.TLSVersion.TLSv1
+                    ctx.maximum_version = ssl.TLSVersion.MAXIMUM_SUPPORTED
+                    kwargs['ssl_context'] = ctx
+                    return super().init_poolmanager(*args, **kwargs)
+
+            session = requests.Session()
+            session.mount('https://', SSLAdapter())
+
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                tmp_path = tmp.name
+                response = session.get(zip_url, timeout=120, verify=False, stream=True)
+                response.raise_for_status()
+                for chunk in response.iter_content(chunk_size=8192):
+                    tmp.write(chunk)
+
+            with zipfile.ZipFile(tmp_path, 'r') as zf:
+                zf.extractall(output_dir)
+
+            os.unlink(tmp_path)
+            return self._find_md_file(output_dir)
+
+        except Exception as e:
+            last_error = e
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            print(f"  Method 2 (requests) failed: {e}")
+
+        # Method 3: Try curl (uses Windows Schannel)
+        try:
+            import shutil
+            import subprocess
+            if shutil.which('curl'):
+                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                    tmp_path = tmp.name
 
                 result = subprocess.run(
-                    ['powershell', '-Command', ps_cmd],
+                    ['curl', '-L', '-o', tmp_path, zip_url],
                     capture_output=True,
-                    text=True,
                     timeout=120
                 )
-
-                if result.returncode == 0 and os.path.exists(tmp_path):
-                    # Extract
+                if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
                     with zipfile.ZipFile(tmp_path, 'r') as zf:
                         zf.extractall(output_dir)
-
                     os.unlink(tmp_path)
                     return self._find_md_file(output_dir)
-                else:
-                    print(f"  PowerShell failed: {result.stderr}")
+        except Exception as e:
+            print(f"  Method 3 (curl) failed: {e}")
 
-            except Exception as e:
-                print(f"  PowerShell fallback failed: {e}")
-
-        raise RuntimeError(f"Failed to download after {self.max_retries} attempts: {last_error}")
+        raise RuntimeError(f"All download methods failed. Last error: {last_error}")
 
     def _find_md_file(self, output_dir: Path) -> Path:
         """Find the main Markdown file in output directory."""
