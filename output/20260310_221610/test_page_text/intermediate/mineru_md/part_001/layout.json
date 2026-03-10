@@ -1,0 +1,667 @@
+{
+    "pdf_info": [
+        {
+            "para_blocks": [
+                {
+                    "bbox": [
+                        47,
+                        67,
+                        246,
+                        79
+                    ],
+                    "type": "text",
+                    "angle": 0,
+                    "index": 1,
+                    "lines": [
+                        {
+                            "bbox": [
+                                48,
+                                64,
+                                249,
+                                82
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        64,
+                                        249,
+                                        82
+                                    ],
+                                    "type": "text",
+                                    "content": "This is a test PDF file for OCR Flow pipeline.",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "bbox": [
+                        47,
+                        95,
+                        122,
+                        106
+                    ],
+                    "type": "title",
+                    "angle": 0,
+                    "index": 2,
+                    "lines": [
+                        {
+                            "bbox": [
+                                48,
+                                95,
+                                123,
+                                108
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        95,
+                                        123,
+                                        108
+                                    ],
+                                    "type": "text",
+                                    "content": "Features to test:",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "bbox": [
+                        48,
+                        108,
+                        171,
+                        176
+                    ],
+                    "type": "list",
+                    "angle": 0,
+                    "index": 8,
+                    "blocks": [
+                        {
+                            "bbox": [
+                                48,
+                                108,
+                                119,
+                                121
+                            ],
+                            "type": "text",
+                            "angle": 0,
+                            "index": 3,
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        47,
+                                        106,
+                                        120,
+                                        124
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                47,
+                                                106,
+                                                120,
+                                                124
+                                            ],
+                                            "type": "text",
+                                            "content": "1. PDF splitting",
+                                            "score": 1.0
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                48,
+                                122,
+                                171,
+                                134
+                            ],
+                            "type": "text",
+                            "angle": 0,
+                            "index": 4,
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        122,
+                                        172,
+                                        137
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                48,
+                                                122,
+                                                172,
+                                                137
+                                            ],
+                                            "type": "text",
+                                            "content": "2. Ghostscript compression",
+                                            "score": 1.0
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                48,
+                                136,
+                                164,
+                                148
+                            ],
+                            "type": "text",
+                            "angle": 0,
+                            "index": 5,
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        47,
+                                        135,
+                                        164,
+                                        149
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                47,
+                                                135,
+                                                164,
+                                                149
+                                            ],
+                                            "type": "text",
+                                            "content": "3. MinerU API conversion",
+                                            "score": 1.0
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                48,
+                                150,
+                                164,
+                                162
+                            ],
+                            "type": "text",
+                            "angle": 0,
+                            "index": 6,
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        47,
+                                        148,
+                                        166,
+                                        165
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                47,
+                                                148,
+                                                166,
+                                                165
+                                            ],
+                                            "type": "text",
+                                            "content": "4. Markdown format fixing",
+                                            "score": 1.0
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                48,
+                                164,
+                                148,
+                                176
+                            ],
+                            "type": "text",
+                            "angle": 0,
+                            "index": 7,
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        47,
+                                        161,
+                                        149,
+                                        179
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                47,
+                                                161,
+                                                149,
+                                                179
+                                            ],
+                                            "type": "text",
+                                            "content": "5. Image downloading",
+                                            "score": 1.0
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    "sub_type": "text"
+                },
+                {
+                    "bbox": [
+                        47,
+                        191,
+                        354,
+                        202
+                    ],
+                    "type": "text",
+                    "angle": 0,
+                    "index": 9,
+                    "lines": [
+                        {
+                            "bbox": [
+                                48,
+                                191,
+                                354,
+                                204
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        191,
+                                        354,
+                                        204
+                                    ],
+                                    "type": "text",
+                                    "content": "This document contains text that should be extractable without OCR.",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "bbox": [
+                        47,
+                        218,
+                        149,
+                        229
+                    ],
+                    "type": "title",
+                    "angle": 0,
+                    "index": 10,
+                    "lines": [
+                        {
+                            "bbox": [
+                                48,
+                                218,
+                                151,
+                                232
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        218,
+                                        151,
+                                        232
+                                    ],
+                                    "type": "text",
+                                    "content": "Section 1: Introduction",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "bbox": [
+                        47,
+                        232,
+                        293,
+                        245
+                    ],
+                    "type": "text",
+                    "angle": 0,
+                    "index": 11,
+                    "lines": [
+                        {
+                            "bbox": [
+                                47,
+                                231,
+                                295,
+                                247
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        47,
+                                        231,
+                                        295,
+                                        247
+                                    ],
+                                    "type": "text",
+                                    "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "bbox": [
+                        47,
+                        260,
+                        173,
+                        271
+                    ],
+                    "type": "text",
+                    "angle": 0,
+                    "index": 12,
+                    "lines": [
+                        {
+                            "bbox": [
+                                48,
+                                260,
+                                174,
+                                272
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        260,
+                                        174,
+                                        272
+                                    ],
+                                    "type": "text",
+                                    "content": "Section 2: Technical Details",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "bbox": [
+                        48,
+                        273,
+                        192,
+                        312
+                    ],
+                    "type": "list",
+                    "angle": 0,
+                    "index": 16,
+                    "blocks": [
+                        {
+                            "bbox": [
+                                48,
+                                273,
+                                192,
+                                285
+                            ],
+                            "type": "text",
+                            "angle": 0,
+                            "index": 13,
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        47,
+                                        272,
+                                        193,
+                                        287
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                47,
+                                                272,
+                                                193,
+                                                287
+                                            ],
+                                            "type": "text",
+                                            "content": "- Memory Address: 0x20000000",
+                                            "score": 1.0
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                48,
+                                287,
+                                167,
+                                299
+                            ],
+                            "type": "text",
+                            "angle": 0,
+                            "index": 14,
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        286,
+                                        168,
+                                        303
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                48,
+                                                286,
+                                                168,
+                                                303
+                                            ],
+                                            "type": "text",
+                                            "content": "- Register: GPIO_MODER",
+                                            "score": 1.0
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                48,
+                                301,
+                                148,
+                                312
+                            ],
+                            "type": "text",
+                            "angle": 0,
+                            "index": 15,
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        301,
+                                        148,
+                                        314
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                48,
+                                                301,
+                                                148,
+                                                314
+                                            ],
+                                            "type": "text",
+                                            "content": "- Value: 0xABCD1234",
+                                            "score": 1.0
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    "sub_type": "text"
+                },
+                {
+                    "bbox": [
+                        47,
+                        328,
+                        163,
+                        341
+                    ],
+                    "type": "text",
+                    "angle": 0,
+                    "index": 17,
+                    "lines": [
+                        {
+                            "bbox": [
+                                47,
+                                326,
+                                164,
+                                343
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        47,
+                                        326,
+                                        164,
+                                        343
+                                    ],
+                                    "type": "text",
+                                    "content": "Section 3: Code Example",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "bbox": [
+                        47,
+                        342,
+                        177,
+                        383
+                    ],
+                    "type": "text",
+                    "angle": 0,
+                    "index": 18,
+                    "lines": [
+                        {
+                            "bbox": [
+                                47,
+                                341,
+                                127,
+                                357
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        47,
+                                        341,
+                                        127,
+                                        357
+                                    ],
+                                    "type": "text",
+                                    "content": "void main(void) {",
+                                    "score": 1.0
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                58,
+                                356,
+                                179,
+                                369
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        58,
+                                        356,
+                                        179,
+                                        369
+                                    ],
+                                    "type": "text",
+                                    "content": "printf(\"Hello, OCR Flow!\");",
+                                    "score": 1.0
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                45,
+                                369,
+                                58,
+                                383
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        45,
+                                        369,
+                                        58,
+                                        383
+                                    ],
+                                    "type": "text",
+                                    "content": "}",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "discarded_blocks": [
+                {
+                    "bbox": [
+                        47,
+                        40,
+                        206,
+                        53
+                    ],
+                    "type": "header",
+                    "angle": 0,
+                    "index": 0,
+                    "lines": [
+                        {
+                            "bbox": [
+                                48,
+                                37,
+                                208,
+                                54
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        37,
+                                        208,
+                                        54
+                                    ],
+                                    "type": "text",
+                                    "content": "OCR Flow Test Document - Page 1",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "page_size": [
+                595,
+                842
+            ],
+            "page_idx": 0
+        }
+    ],
+    "_backend": "hybrid",
+    "_ocr_enable": false,
+    "_vlm_ocr_enable": false,
+    "_version_name": "2.7.6"
+}

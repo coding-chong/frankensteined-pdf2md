@@ -1,0 +1,2 @@
+[console_scripts]
+ocr-flow = ocr_flow.cli:cli

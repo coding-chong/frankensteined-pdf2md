@@ -1,0 +1,259 @@
+[
+    [
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "This is a test PDF file for OCR Flow pipeline. "
+                    }
+                ]
+            },
+            "bbox": [
+                78,
+                79,
+                413,
+                93
+            ]
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Features to test: "
+                    }
+                ],
+                "level": 1
+            },
+            "bbox": [
+                78,
+                112,
+                205,
+                125
+            ]
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "1. PDF splitting "
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "2. Ghostscript compression "
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "3. MinerU API conversion "
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "4. Markdown format fixing "
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "5. Image downloading "
+                            }
+                        ]
+                    }
+                ]
+            },
+            "bbox": [
+                80,
+                128,
+                287,
+                209
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "This document contains text that should be extractable without OCR. "
+                    }
+                ]
+            },
+            "bbox": [
+                78,
+                226,
+                594,
+                239
+            ]
+        },
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "Section 1: Introduction "
+                    }
+                ],
+                "level": 1
+            },
+            "bbox": [
+                78,
+                258,
+                250,
+                271
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
+                    }
+                ]
+            },
+            "bbox": [
+                78,
+                275,
+                492,
+                290
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Section 2: Technical Details "
+                    }
+                ]
+            },
+            "bbox": [
+                78,
+                308,
+                290,
+                321
+            ]
+        },
+        {
+            "type": "list",
+            "content": {
+                "list_type": "text_list",
+                "list_items": [
+                    {
+                        "item_type": "text",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "- Memory Address: 0x20000000 "
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "- Register: GPIO_MODER "
+                            }
+                        ]
+                    },
+                    {
+                        "item_type": "text",
+                        "item_content": [
+                            {
+                                "type": "text",
+                                "content": "- Value: 0xABCD1234 "
+                            }
+                        ]
+                    }
+                ]
+            },
+            "bbox": [
+                80,
+                324,
+                322,
+                370
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Section 3: Code Example "
+                    }
+                ]
+            },
+            "bbox": [
+                78,
+                389,
+                273,
+                404
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "void main(void) {printf(\"Hello, OCR Flow!\");}"
+                    }
+                ]
+            },
+            "bbox": [
+                78,
+                406,
+                297,
+                454
+            ]
+        },
+        {
+            "type": "page_header",
+            "content": {
+                "page_header_content": [
+                    {
+                        "type": "text",
+                        "content": "OCR Flow Test Document - Page 1 "
+                    }
+                ]
+            },
+            "bbox": [
+                78,
+                47,
+                346,
+                62
+            ]
+        }
+    ]
+]

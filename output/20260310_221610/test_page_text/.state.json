@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "source_path": "test_assets\\test_page_text.pdf",
+  "source_size": 1297,
+  "source_sha256": "965ad4e67c47cafc9015381163efcc1e7fe2958384088491293c8a73f61fdf1b",
+  "options": {
+    "pdf_type": "text",
+    "language": "en",
+    "translate": false
+  },
+  "total_pages": 1,
+  "current_step": "image_download",
+  "steps": {
+    "ocr": {
+      "status": "skipped",
+      "output": null,
+      "output_dir": null,
+      "files": [],
+      "completed": [],
+      "failed": {},
+      "error": null,
+      "retries": 0
+    },
+    "translate": {
+      "status": "skipped",
+      "output": null,
+      "output_dir": null,
+      "files": [],
+      "completed": [],
+      "failed": {},
+      "error": null,
+      "retries": 0
+    },
+    "split": {
+      "status": "completed",
+      "output": null,
+      "output_dir": "C:\\Users\\MateBookPro\\Desktop\\OCR_flow\\ocr_flow\\output\\20260310_221610\\test_page_text\\intermediate\\split",
+      "files": [
+        "part_001.pdf"
+      ],
+      "completed": [],
+      "failed": {},
+      "error": null,
+      "retries": 0
+    },
+    "compress": {
+      "status": "completed",
+      "output": null,
+      "output_dir": "C:\\Users\\MateBookPro\\Desktop\\OCR_flow\\ocr_flow\\output\\20260310_221610\\test_page_text\\intermediate\\compressed",
+      "files": [
+        "compressed_part_001.pdf"
+      ],
+      "completed": [],
+      "failed": {},
+      "error": null,
+      "retries": 0
+    },
+    "mineru": {
+      "status": "completed",
+      "output": null,
+      "output_dir": null,
+      "files": [],
+      "completed": [
+        1
+      ],
+      "failed": {},
+      "error": null,
+      "retries": 0
+    },
+    "format_fix": {
+      "status": "completed",
+      "output": null,
+      "output_dir": null,
+      "files": [],
+      "completed": [
+        1
+      ],
+      "failed": {},
+      "error": null,
+      "retries": 0
+    },
+    "image_download": {
+      "status": "completed",
+      "output": null,
+      "output_dir": null,
+      "files": [],
+      "completed": [
+        1
+      ],
+      "failed": {},
+      "error": null,
+      "retries": 0
+    }
+  },
+  "created_at": "2026-03-10T22:16:10.391804",
+  "updated_at": "2026-03-10T22:16:42.928697"
+}
