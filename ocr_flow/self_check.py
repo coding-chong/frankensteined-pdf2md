@@ -4,8 +4,10 @@
 
 import subprocess
 import shutil
+import os
+import time
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import requests
 
@@ -76,8 +78,15 @@ class SelfCheck:
 
         return {'ok': False, 'message': 'API token not configured'}
 
-    def check_umi_ocr(self) -> Dict[str, Any]:
-        """Check if UMI OCR service is running."""
+    def check_umi_ocr(self, auto_start: bool = False) -> Dict[str, Any]:
+        """Check if UMI OCR service is running.
+
+        Args:
+            auto_start: If True and service is not running, try to start it
+
+        Returns:
+            Dict with ok, message, and optionally started (if auto-started)
+        """
         url = self.config.umiocr.url if self.config else "http://127.0.0.1:1224"
 
         try:
@@ -90,6 +99,32 @@ class SelfCheck:
             else:
                 return {'ok': False, 'message': f'Service returned status {response.status_code}'}
         except requests.exceptions.ConnectionError:
+            # Service not running, try to start if auto_start is True
+            if auto_start:
+                result = start_umi_ocr()
+                if result['started']:
+                    # Wait for service to be ready
+                    for _ in range(10):
+                        time.sleep(1)
+                        try:
+                            r = requests.get(f"{url}/api/doc/get_options", timeout=2)
+                            if r.status_code == 200:
+                                return {
+                                    'ok': True,
+                                    'message': f'Service started and running at {url}',
+                                    'started': True
+                                }
+                        except:
+                            pass
+                    return {
+                        'ok': False,
+                        'message': f'Service started but not responding at {url}'
+                    }
+                else:
+                    return {
+                        'ok': False,
+                        'message': f"Service not running. {result['message']}"
+                    }
             return {'ok': False, 'message': f'Service not running at {url}. Start UMI OCR application.'}
         except Exception as e:
             return {'ok': False, 'message': f'Check failed: {e}'}
@@ -122,6 +157,103 @@ class SelfCheck:
         return {
             'ok': False,
             'message': 'Not found. Install with: pip install BabelDOC or clone and use path config'
+        }
+
+
+def find_umi_ocr() -> Optional[str]:
+    """Find UMI OCR executable.
+
+    Returns:
+        Path to UMI OCR executable or None if not found.
+    """
+    # Common names
+    names = ['Umi-OCR', 'Umi-OCR.exe', 'umi-ocr']
+
+    # Check PATH
+    for name in names:
+        path = shutil.which(name)
+        if path:
+            return path
+
+    # Check common install locations on Windows
+    if os.name == 'nt':
+        common_paths = [
+            Path(os.environ.get('LOCALAPPDATA', '')) / 'Programs',
+            Path(os.environ.get('PROGRAMFILES', '')),
+            Path(os.environ.get('PROGRAMFILES(X86)', '')),
+            Path('D:/Program Files'),
+            Path('E:/Program Files'),
+            Path('C:/Program Files'),
+            Path('C:/Program Files (x86)'),
+        ]
+
+        for base in common_paths:
+            if not base.exists():
+                continue
+            # Check for Umi-OCR directory
+            for item in base.iterdir():
+                if item.is_dir() and 'umi' in item.name.lower() and 'ocr' in item.name.lower():
+                    exe = item / 'Umi-OCR.exe'
+                    if exe.exists():
+                        return str(exe)
+
+        # Also check user-specific locations
+        user_paths = [
+            Path.home() / 'AppData/Local/Programs',
+            Path.home() / 'Desktop',
+        ]
+        for base in user_paths:
+            if not base.exists():
+                continue
+            for item in base.iterdir():
+                if item.is_dir() and 'umi' in item.name.lower():
+                    exe = item / 'Umi-OCR.exe'
+                    if exe.exists():
+                        return str(exe)
+
+    return None
+
+
+def start_umi_ocr() -> Dict[str, Any]:
+    """Start UMI OCR service.
+
+    Returns:
+        Dict with 'started' bool and 'message' str
+    """
+    umi_path = find_umi_ocr()
+
+    if not umi_path:
+        return {
+            'started': False,
+            'message': 'UMI OCR not found. Download from https://github.com/hiroi-sora/Umi-OCR/releases'
+        }
+
+    try:
+        # Start UMI OCR in background
+        if os.name == 'nt':
+            # On Windows, use DETACHED_PROCESS to run in background
+            subprocess.Popen(
+                [umi_path],
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        else:
+            subprocess.Popen(
+                [umi_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
+            )
+
+        return {
+            'started': True,
+            'message': f'Started UMI OCR from {umi_path}'
+        }
+    except Exception as e:
+        return {
+            'started': False,
+            'message': f'Failed to start UMI OCR: {e}'
         }
 
 

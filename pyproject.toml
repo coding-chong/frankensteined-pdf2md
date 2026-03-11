@@ -19,6 +19,7 @@ dependencies = [
     "click>=8.0.0",
     "rich>=13.0.0",
     "tomli>=2.0.0",
+    "tomli-w>=1.0.0",
 ]
 
 [project.scripts]
@@ -28,6 +29,10 @@ ocr-flow = "ocr_flow.cli:cli"
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+]
+# Windows-only: .NET WebClient for SSL bypass
+windows = [
+    "pythonnet>=3.0.0",
 ]
 
 [tool.setuptools.packages.find]

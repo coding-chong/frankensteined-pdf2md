@@ -12,7 +12,6 @@ from typing import Optional
 
 import requests
 import urllib3
-import httpx
 
 # Disable SSL warnings for CDN downloads
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)

@@ -2,13 +2,124 @@
 # -*- coding: utf-8 -*-
 """OCR Flow CLI entry point."""
 
+import sys
+import time
 import click
 from pathlib import Path
+from typing import Optional, Dict, Any
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from . import __version__
 
 console = Console()
+
+
+def detect_unfinished_task(work_dir: Path) -> Optional[Dict[str, Any]]:
+    """Detect unfinished task in output directory.
+
+    Args:
+        work_dir: Working directory to check for .state.json
+
+    Returns:
+        Dict with state info if unfinished, None if completed or no state
+    """
+    from .state import State, StateManager
+
+    state_manager = StateManager(work_dir)
+    if not state_manager.has_state():
+        return None
+
+    state = state_manager.state or State.load(state_manager.state_path)
+    if not state:
+        return None
+
+    if state.is_completed():
+        return None
+
+    # Analyze step status
+    current_step = state.current_step or "unknown"
+
+    # Count completed/failed/pending for mineru step (most common partial case)
+    mineru_step = state.steps.get('mineru')
+    if mineru_step:
+        completed = len(mineru_step.completed) if mineru_step.completed else 0
+        failed_count = len(mineru_step.failed) if mineru_step.failed else 0
+        total = state.total_pages or 0
+        pending = total - completed - failed_count
+
+        return {
+            'state': state,
+            'state_manager': state_manager,
+            'current_step': current_step,
+            'total': total,
+            'completed': completed,
+            'failed': list(mineru_step.failed.keys()) if mineru_step.failed else [],
+            'pending': pending,
+        }
+
+    # For other steps, just report current step
+    return {
+        'state': state,
+        'state_manager': state_manager,
+        'current_step': current_step,
+        'total': 0,
+        'completed': 0,
+        'failed': [],
+        'pending': 0,
+    }
+
+
+def show_recovery_menu(state_info: Dict[str, Any]) -> Optional[str]:
+    """Show recovery menu and return user choice.
+
+    Returns:
+        'continue' | 'retry' | 'continue_retry' | 'restart' | 'cancel'
+    """
+    console.print("\n[bold yellow][*] 检测到上次未完成的任务:[/bold yellow]")
+    console.print(f"   步骤: {state_info['current_step']}")
+
+    if state_info['total'] > 0:
+        console.print(f"   [green][OK] 已完成:[/green] {state_info['completed']}/{state_info['total']}")
+        if state_info['failed']:
+            console.print(f"   [red][X] 失败:[/red] {', '.join(state_info['failed'])}")
+        if state_info['pending'] > 0:
+            console.print(f"   [yellow]⏸️ 未开始:[/yellow] {state_info['pending']} 个文件")
+
+    console.print("\n   [bold]恢复选项:[/bold]")
+    console.print("   (1) 继续 - 处理未开始的文件")
+    if state_info['failed']:
+        console.print("   (2) 重试失败 - 只处理失败的文件")
+        console.print("   (3) 继续 + 重试 - 处理失败的和未开始的")
+        console.print("   (4) 重来 - 删除所有，重新开始")
+        console.print("   (5) 取消")
+        choices = ['1', '2', '3', '4', '5']
+    else:
+        console.print("   (2) 重来 - 删除所有，重新开始")
+        console.print("   (3) 取消")
+        choices = ['1', '2', '3']
+
+    choice = click.prompt("\n   选择", type=click.Choice(choices), default='1')
+
+    if not state_info['failed']:
+        # Simplified menu
+        if choice == '1':
+            return 'continue'
+        elif choice == '2':
+            return 'restart'
+        else:
+            return 'cancel'
+    else:
+        # Full menu
+        if choice == '1':
+            return 'continue'
+        elif choice == '2':
+            return 'retry'
+        elif choice == '3':
+            return 'continue_retry'
+        elif choice == '4':
+            return 'restart'
+        else:
+            return 'cancel'
 
 
 def interactive_ask(is_batch: bool = False) -> dict:
@@ -134,11 +245,22 @@ def process(input_path: str, output: str, config: str, verbose: bool,
 
     INPUT_PATH: PDF file or directory containing PDF files
     """
-    from pathlib import Path
+    import shutil
+    from datetime import datetime
     from .pipeline import Pipeline
     from .config import Config
+    from .state import State, StateManager
 
     input_path = Path(input_path)
+
+    # S2.3: Check for first-time config
+    config_path = Config.get_config_path()
+    if not config_path.exists():
+        console.print("\n[bold yellow]⚠️ 未检测到配置文件，开始配置向导...[/bold yellow]\n")
+        Config.configure_interactive()
+
+        if not click.confirm("\n是否继续处理?", default=True):
+            return
 
     # Load config
     cfg = Config.load(config_path=Path(config) if config else None)
@@ -150,44 +272,93 @@ def process(input_path: str, output: str, config: str, verbose: bool,
     # Determine processing mode
     if input_path.is_file():
         files = [input_path]
+        is_batch = False
     elif input_path.is_dir():
         files = list(input_path.glob("*.pdf"))
         if not files:
             click.echo(f"No PDF files found in {input_path}")
             return
+        is_batch = len(files) > 1
     else:
         click.echo(f"Invalid input path: {input_path}")
         return
 
-    click.echo(f"\n[INFO] Found {len(files)} PDF file(s)\n")
+    console.print(f"\n[bold][*] 发现 {len(files)} 个 PDF 文件[/bold]\n")
+
+    # S1.1: Check for unfinished task in output directory
+    recovery_mode = None
+    state_info = detect_unfinished_task(output_dir / datetime.now().strftime("%Y%m%d_%H%M%S"))
+
+    # Look for any existing state file in output_dir subdirectories
+    for subdir in output_dir.iterdir():
+        if subdir.is_dir():
+            for subsubdir in subdir.iterdir():
+                if subsubdir.is_dir():
+                    potential_state = subsubdir / '.state.json'
+                    if potential_state.exists():
+                        state_info = detect_unfinished_task(subsubdir)
+                        if state_info:
+                            recovery_mode = show_recovery_menu(state_info)
+                            if recovery_mode == 'cancel':
+                                return
+                            elif recovery_mode == 'restart':
+                                # Delete existing work
+                                if click.confirm(f"确认删除 {subsubdir}?", default=False):
+                                    shutil.rmtree(subsubdir)
+                                    console.print("[yellow]已删除，将重新开始[/yellow]")
+                            break
+            if recovery_mode:
+                break
 
     # Interactive mode: ask for options
+    ask_each_pdf_type = False
+    ask_each_lang = False
+    ask_each_translate = False
+
     if not non_interactive:
-        options = interactive_ask(len(files) > 1)
+        options = interactive_ask(is_batch)
         if options is None:
             click.echo("Cancelled.")
             return
-        pdf_type = options['pdf_type']
-        lang = options['language']
-        translate = options['translate']
+
+        # S2.1: Handle "ask_each" options for batch processing
+        if is_batch:
+            if options.get('pdf_type') == 'ask_each':
+                ask_each_pdf_type = True
+                pdf_type = None  # Will ask per file
+            else:
+                pdf_type = options['pdf_type']
+
+            if options.get('language') == 'ask_each':
+                ask_each_lang = True
+                lang = None
+            else:
+                lang = options['language']
+
+            if options.get('translate') == 'ask_each':
+                ask_each_translate = True
+                translate = None
+            else:
+                translate = options['translate']
+        else:
+            pdf_type = options['pdf_type']
+            lang = options['language']
+            translate = options['translate']
 
     # Non-interactive mode: use provided options
-    if not lang:
+    if not lang and not ask_each_lang:
         click.echo("--lang is required in non-interactive mode")
         return
-    if translate is None:
+    if translate is None and not ask_each_translate:
         click.echo("--translate or --no-translate is required in non-interactive mode")
         return
 
-    # Auto-detect PDF type if needed
-    if pdf_type == 'auto':
-        from .steps.split import detect_pdf_type
-        pdf_type = detect_pdf_type(files[0])
-        if verbose:
-            console.print(f"[dim][INFO][/dim] Auto-detected PDF type: [bold]{pdf_type}[/bold]")
-
     # Run pipeline with progress bar
     pipeline = Pipeline(cfg, verbose=verbose)
+    success_count = 0
+    failed_count = 0
+    failed_files = []
+    start_time = time.time()
 
     with Progress(
         SpinnerColumn(),
@@ -201,21 +372,81 @@ def process(input_path: str, output: str, config: str, verbose: bool,
 
         for pdf_file in files:
             progress.update(task, description=f"[cyan]Processing: {pdf_file.name}")
+
+            # S2.1: Ask per file if needed
+            file_pdf_type = pdf_type
+            file_lang = lang
+            file_translate = translate
+
+            if ask_each_pdf_type or ask_each_lang or ask_each_translate:
+                console.print(f"\n[bold][*] {pdf_file.name}[/bold]")
+
+                if ask_each_pdf_type:
+                    click.echo("  PDF 类型: (1) 文字版  (2) 扫描版")
+                    choice = click.prompt("  选择", type=click.INT, default=1)
+                    file_pdf_type = 'text' if choice == 1 else 'scanned'
+
+                if ask_each_lang:
+                    click.echo("  文档语言: (1) 英文  (2) 中文")
+                    choice = click.prompt("  选择", type=click.INT, default=1)
+                    file_lang = 'en' if choice == 1 else 'zh'
+
+                if ask_each_translate:
+                    if file_lang == 'zh':
+                        file_translate = False
+                    else:
+                        click.echo("  是否翻译: (1) 是  (2) 否")
+                        choice = click.prompt("  选择", type=click.INT, default=1)
+                        file_translate = (choice == 1)
+
+            # Auto-detect PDF type if needed
+            if file_pdf_type == 'auto':
+                from .steps.split import detect_pdf_type
+                file_pdf_type = detect_pdf_type(pdf_file)
+                if verbose:
+                    console.print(f"[dim][INFO][/dim] Auto-detected PDF type: [bold]{file_pdf_type}[/bold]")
+
             try:
                 result = pipeline.run(
                     pdf_file,
                     output_dir,
-                    pdf_type=pdf_type,
-                    language=lang,
-                    translate=translate
+                    pdf_type=file_pdf_type,
+                    language=file_lang,
+                    translate=file_translate,
+                    recovery_mode=recovery_mode,
+                    state_info=state_info if recovery_mode else None
                 )
-                console.print(f"[green]Done:[/green] {pdf_file.name} -> {result}")
+                console.print(f"[green][OK] Done:[/green] {pdf_file.name} -> {result}")
+                success_count += 1
             except Exception as e:
-                console.print(f"[red]Error:[/red] {pdf_file.name}: {e}")
+                console.print(f"[red][X] Error:[/red] {pdf_file.name}: {e}")
+                failed_count += 1
+                failed_files.append(pdf_file.name)
 
             progress.advance(task)
 
-    console.print(f"\n[bold green]All done![/bold green] Output: {output_dir}")
+    # S2.4: Show completion statistics
+    elapsed_time = time.time() - start_time
+
+    console.print(f"\n[bold]{'═' * 40}[/bold]")
+    console.print(f"[bold green]处理完成！[/bold green]")
+    console.print(f"  [green][OK] 成功:[/green] {success_count} 个文件")
+    if failed_count > 0:
+        console.print(f"  [red][X] 失败:[/red] {failed_count} 个文件")
+        for f in failed_files:
+            console.print(f"      - {f}")
+    console.print(f"  [T] 耗时: {elapsed_time:.1f} 秒")
+    console.print(f"[bold]{'═' * 40}[/bold]\n")
+
+    # S2.4: Ask to open output directory
+    if click.confirm("是否打开输出目录?", default=True):
+        import subprocess
+        if sys.platform == 'win32':
+            subprocess.run(['explorer', str(output_dir)])
+        elif sys.platform == 'darwin':
+            subprocess.run(['open', str(output_dir)])
+        else:
+            subprocess.run(['xdg-open', str(output_dir)])
 
 
 @cli.command()
@@ -229,7 +460,8 @@ def config():
 @click.option('--fix', is_flag=True, help='Try to fix issues')
 @click.option('--translate', is_flag=True, help='Check translation dependencies (BabelDOC)')
 @click.option('--ocr', is_flag=True, help='Check OCR dependencies (UMI OCR)')
-def doctor(fix: bool, translate: bool, ocr: bool):
+@click.option('--start-ocr', is_flag=True, help='Auto-start UMI OCR if not running')
+def doctor(fix: bool, translate: bool, ocr: bool, start_ocr: bool):
     """Check system dependencies and configuration."""
     from .self_check import SelfCheck
     from .config import Config
@@ -238,14 +470,29 @@ def doctor(fix: bool, translate: bool, ocr: bool):
     cfg = Config.load()
 
     checker = SelfCheck(config=cfg)
-    results = checker.check_all(needs_ocr=ocr, needs_translate=translate)
+
+    # Check UMI OCR with auto-start option
+    if ocr:
+        umi_result = checker.check_umi_ocr(auto_start=start_ocr)
+        results = {
+            'ghostscript': checker.check_ghostscript(),
+            'mineru_api': checker.check_mineru_api(),
+            'umi_ocr': umi_result
+        }
+        if translate:
+            results['babeldoc'] = checker.check_babeldoc()
+    else:
+        results = checker.check_all(needs_ocr=ocr, needs_translate=translate)
 
     click.echo("\n=== OCR Flow System Check ===\n")
 
     all_passed = True
     for name, result in results.items():
         status = "[OK]" if result["ok"] else "[FAIL]"
-        click.echo(f"  {status} {name}: {result['message']}")
+        message = result['message']
+        if result.get('started'):
+            message += " (auto-started)"
+        click.echo(f"  {status} {name}: {message}")
         if not result["ok"]:
             all_passed = False
 
@@ -254,6 +501,8 @@ def doctor(fix: bool, translate: bool, ocr: bool):
         click.echo("All checks passed!")
     else:
         click.echo("Some checks failed. Run 'ocr-flow config' to configure.")
+        if ocr and 'umi_ocr' in results and not results['umi_ocr']['ok']:
+            click.echo("Tip: Use --start-ocr to auto-start UMI OCR service.")
 
 
 if __name__ == '__main__':
