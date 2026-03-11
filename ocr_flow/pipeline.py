@@ -304,7 +304,11 @@ class Pipeline:
                 for i in format_completed:
                     md_file = final_dir / f"part_{i:03d}.md"
                     if md_file.exists():
-                        success, failed_urls = download_images(md_file, images_dir, i)
+                        # Source images directory from MinerU output
+                        source_images_dir = md_dir / f"part_{i:03d}"
+                        success, failed_urls = download_images(
+                            md_file, images_dir, i, source_images_dir
+                        )
                         download_completed.append(i)
                         if failed_urls:
                             download_failed[str(i)] = failed_urls

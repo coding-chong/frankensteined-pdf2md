@@ -1,3 +1,4 @@
+README.md
 pyproject.toml
 ocr_flow/__init__.py
 ocr_flow/cli.py
@@ -21,4 +22,17 @@ ocr_flow/steps/split.py
 ocr_flow/steps/translate.py
 ocr_flow/utils/__init__.py
 ocr_flow/utils/api_client.py
+ocr_flow/utils/graceful_exit.py
 ocr_flow/utils/pdf_utils.py
+tests/test_cli.py
+tests/test_compress.py
+tests/test_config.py
+tests/test_format_fix.py
+tests/test_graceful_exit.py
+tests/test_image_download.py
+tests/test_mineru.py
+tests/test_ocr.py
+tests/test_pipeline.py
+tests/test_self_check.py
+tests/test_split.py
+tests/test_state.py

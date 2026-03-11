@@ -175,6 +175,17 @@ def find_umi_ocr() -> Optional[str]:
         if path:
             return path
 
+    # Check project-local umiocr directory (relative to this file)
+    project_root = Path(__file__).parent.parent.parent  # Go up to project root
+    local_umiocr_dir = project_root / 'umiocr'
+    if local_umiocr_dir.exists():
+        # Search for UMI OCR installations in local directory
+        for item in local_umiocr_dir.iterdir():
+            if item.is_dir() and 'umi' in item.name.lower():
+                exe = item / 'Umi-OCR.exe'
+                if exe.exists():
+                    return str(exe)
+
     # Check common install locations on Windows
     if os.name == 'nt':
         common_paths = [

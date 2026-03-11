@@ -8,9 +8,11 @@ Based on confuse_md_fix/fix_markdown.py
 
 import re
 import time
+import json
 import hashlib
+import shutil
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
@@ -45,6 +47,15 @@ def extract_image_urls(content: str) -> List[Tuple[str, str]]:
 def is_http_url(url: str) -> bool:
     """Check if URL is HTTP/HTTPS."""
     return url.startswith('http://') or url.startswith('https://')
+
+
+def is_local_image_path(url: str) -> bool:
+    """Check if URL is a local image path (relative path like images/xxx.jpg)."""
+    if is_http_url(url):
+        return False
+    # Check if it looks like an image path
+    ext = Path(url.split('?')[0]).suffix.lower()
+    return ext in COMMON_IMAGE_EXTS
 
 
 def get_extension_from_url(url: str) -> str:
@@ -150,14 +161,16 @@ def download_images(
     md_path: Path,
     images_base_dir: Path,
     page_num: int,
+    source_images_dir: Optional[Path] = None,
     max_workers: int = 3,
 ) -> Tuple[bool, List[str]]:
     """Download all images in a Markdown file.
 
     Args:
         md_path: Path to Markdown file
-        images_base_dir: Base directory for images
+        images_base_dir: Base directory for images (final/images)
         page_num: Page number (for subdirectory naming)
+        source_images_dir: Source directory for local images (intermediate/mineru_md/part_XXX)
         max_workers: Maximum concurrent downloads
 
     Returns:
@@ -176,19 +189,37 @@ def download_images(
     if not images:
         return True, []
 
-    # Filter HTTP URLs
-    http_images = [(alt, url) for alt, url in images if is_http_url(url)]
-
-    if not http_images:
-        return True, []
-
     # Create page-specific directory
     page_images_dir = images_base_dir / f"p{page_num:03d}"
     page_images_dir.mkdir(parents=True, exist_ok=True)
 
-    # Download images
     url_mapping = {}  # original_url -> local_filename
     failed_urls = []
+
+    # Handle local images (from MinerU output)
+    local_images = [(alt, url) for alt, url in images if is_local_image_path(url)]
+    if local_images and source_images_dir:
+        source_dir = Path(source_images_dir)
+        for alt, url in local_images:
+            # Source image path (relative to source_images_dir)
+            source_image = source_dir / url
+            if source_image.exists():
+                # Copy to destination
+                dest_image = page_images_dir / source_image.name
+                shutil.copy2(source_image, dest_image)
+                url_mapping[url] = dest_image.name
+            else:
+                # Try without the images/ prefix
+                source_image = source_dir / "images" / Path(url).name
+                if source_image.exists():
+                    dest_image = page_images_dir / source_image.name
+                    shutil.copy2(source_image, dest_image)
+                    url_mapping[url] = dest_image.name
+                else:
+                    failed_urls.append(url)
+
+    # Handle HTTP URLs
+    http_images = [(alt, url) for alt, url in images if is_http_url(url)]
 
     for idx, (alt, url) in enumerate(http_images, 1):
         success, result = download_image(url, page_images_dir)
