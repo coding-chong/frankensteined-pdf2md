@@ -2,16 +2,6 @@
 
 将 PDF 文档（芯片手册、数据手册）转换为 AI 可读的 Markdown 格式的命令行工具。
 
-## 功能特性
-
-- **PDF 类型检测** - 自动识别文字版或扫描版 PDF
-- **OCR 支持** - 通过 UMI OCR 处理扫描文档
-- **PDF 翻译** - 使用 BabelDOC 翻译 PDF 为中文
-- **PDF 压缩** - 使用 Ghostscript 减小文件体积
-- **Markdown 转换** - 通过 MinerU API 提取结构化内容
-- **图片本地化** - 下载并本地化远程图片
-- **状态管理** - 支持中断后恢复/重试
-
 ## 安装
 
 ### 前置要求
@@ -108,6 +98,36 @@ ocr-flow doctor --translate
 
 # 检查 OCR 依赖
 ocr-flow doctor --ocr
+
+# 检查并自动启动 UMI OCR
+ocr-flow doctor --ocr --start-ocr
+```
+
+### 批量处理
+
+```bash
+# 处理目录下所有 PDF
+ocr-flow process ./documents/ -o output/ -v
+
+# 非交互模式批量处理
+ocr-flow process ./documents/ -o output/ --non-interactive --pdf-type text --lang en --no-translate -v
+```
+
+### 恢复/重试
+
+如果处理中断，再次运行会自动检测未完成任务并提供恢复选项：
+
+```
+[*] 检测到上次未完成的任务:
+   步骤: mineru
+   [OK] 已完成: 82/87
+   [X] 失败: part_004, part_052
+
+   (1) 继续 - 处理未开始的
+   (2) 重试失败 - 只处理失败的
+   (3) 继续 + 重试
+   (4) 重来
+   (5) 取消
 ```
 
 ## 处理流程
@@ -145,12 +165,52 @@ output/
         │   ├── split/
         │   ├── compressed/
         │   └── mineru_md/
-        └── final/               # 最终输出
-            ├── part_001.md
-            ├── part_002.md
-            ├── images/
-            └── compressed_pdfs/
+        ├── final/               # 最终输出
+        │   ├── part_001.md
+        │   ├── part_002.md
+        │   ├── images/
+        │   └── compressed_pdfs/
+        ├── ocr-flow.log         # 处理日志
+        └── titles_guide.md      # 标题生成指南（给 Claude Code 使用）
 ```
+
+## 新增功能 (v0.1.0)
+
+### 日志系统
+
+处理日志自动保存到 `ocr-flow.log`，支持：
+- 10MB 自动轮转
+- 保留最近 3 个备份
+
+### 文件大小对比
+
+处理时自动显示压缩效果：
+
+```
+原始大小: 1.40 MB
+压缩后: 0.76 MB
+压缩率: 45.7%
+```
+
+### 标题生成指南
+
+处理完成后生成 `titles_guide.md`，指导 Claude Code 为每个 Markdown 文件生成标题。
+
+### Ctrl+C 安全退出
+
+按 Ctrl+C 可安全中断处理，进度会自动保存，下次运行可继续。
+
+## 功能特性
+
+- **PDF 类型检测** - 自动识别文字版或扫描版 PDF
+- **OCR 支持** - 通过 UMI OCR 处理扫描文档
+- **PDF 翻译** - 使用 BabelDOC 翻译 PDF 为中文
+- **PDF 压缩** - 使用 Ghostscript 减小文件体积
+- **Markdown 转换** - 通过 MinerU API 提取结构化内容
+- **图片本地化** - 下载并本地化远程图片
+- **状态管理** - 支持中断后恢复/重试
+- **日志系统** - 自动记录处理过程
+- **批量处理** - 支持目录批量处理
 
 ## 开发
 
