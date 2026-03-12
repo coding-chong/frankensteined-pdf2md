@@ -426,15 +426,17 @@ class TestDoctorCommand:
     def test_doctor_with_ocr(self, mock_check_class, runner, mock_config):
         """Test doctor with --ocr flag."""
         mock_checker = MagicMock()
-        mock_checker.check_umi_ocr.return_value = {'ok': False, 'message': 'Not running'}
-        mock_checker.check_ghostscript.return_value = {'ok': True, 'message': 'Found'}
-        mock_checker.check_mineru_api.return_value = {'ok': True, 'message': 'OK'}
+        mock_checker.check_all.return_value = {
+            'ghostscript': {'ok': True, 'message': 'Found'},
+            'mineru_api': {'ok': True, 'message': 'OK'},
+            'umi_ocr': {'ok': False, 'message': 'Not running'},
+        }
         mock_check_class.return_value = mock_checker
 
         result = runner.invoke(cli, ['doctor', '--ocr'])
 
         assert result.exit_code == 0
-        mock_checker.check_umi_ocr.assert_called_once()
+        mock_checker.check_all.assert_called_once_with(needs_ocr=True, needs_translate=False)
 
     @patch('ocr_flow.self_check.SelfCheck')
     def test_doctor_with_translate(self, mock_check_class, runner, mock_config):

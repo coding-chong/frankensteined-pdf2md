@@ -253,7 +253,7 @@ class MinerUClient:
                 os.unlink(tmp_path)
             print(f"  Method 2 (requests) failed: {e}")
 
-        # Method 3: Try curl (uses Windows Schannel)
+        # Method 3: Try curl with --noproxy (uses Windows Schannel, bypasses proxy issues)
         try:
             import shutil
             import subprocess
@@ -261,8 +261,9 @@ class MinerUClient:
                 with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
                     tmp_path = tmp.name
 
+                # Use --noproxy '*' to bypass proxy which may cause SSL issues
                 result = subprocess.run(
-                    ['curl', '-L', '-o', tmp_path, zip_url],
+                    ['curl', '--noproxy', '*', '-L', '-o', tmp_path, zip_url],
                     capture_output=True,
                     timeout=120
                 )
@@ -272,6 +273,8 @@ class MinerUClient:
                     os.unlink(tmp_path)
                     return self._find_md_file(output_dir)
         except Exception as e:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
             print(f"  Method 3 (curl) failed: {e}")
 
         raise RuntimeError(f"All download methods failed. Last error: {last_error}")

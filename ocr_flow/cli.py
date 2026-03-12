@@ -224,7 +224,7 @@ def interactive_ask(is_batch: bool = False) -> dict:
 
 
 @click.group()
-@click.version_option(version=__version__)
+@click.version_option(__version__)
 def cli():
     """OCR Flow - PDF to Markdown converter for chip manuals and datasheets."""
     pass
@@ -287,7 +287,7 @@ def process(input_path: str, output: str, config: str, verbose: bool,
 
     # S1.1: Check for unfinished task in output directory
     recovery_mode = None
-    state_info = detect_unfinished_task(output_dir / datetime.now().strftime("%Y%m%d_%H%M%S"))
+    state_info = None
 
     # Look for any existing state file in output_dir subdirectories
     for subdir in output_dir.iterdir():
@@ -471,18 +471,13 @@ def doctor(fix: bool, translate: bool, ocr: bool, start_ocr: bool):
 
     checker = SelfCheck(config=cfg)
 
-    # Check UMI OCR with auto-start option
-    if ocr:
-        umi_result = checker.check_umi_ocr(auto_start=start_ocr)
-        results = {
-            'ghostscript': checker.check_ghostscript(),
-            'mineru_api': checker.check_mineru_api(),
-            'umi_ocr': umi_result
-        }
-        if translate:
-            results['babeldoc'] = checker.check_babeldoc()
-    else:
-        results = checker.check_all(needs_ocr=ocr, needs_translate=translate)
+    # Run all checks with conditional flags
+    results = checker.check_all(needs_ocr=ocr, needs_translate=translate)
+
+    # If --start-ocr flag is set and UMI OCR check failed, try to auto-start
+    if ocr and start_ocr and not results.get('umi_ocr', {}).get('ok', False):
+        umi_result = checker.check_umi_ocr(auto_start=True)
+        results['umi_ocr'] = umi_result
 
     click.echo("\n=== OCR Flow System Check ===\n")
 

@@ -38,18 +38,18 @@ class GracefulExit:
         """Handle SIGINT signal (Ctrl+C)."""
         if self.interrupted:
             # Second Ctrl+C, force exit
-            print("\n[red]强制退出...[/red]")
+            print("\n强制退出...")
             sys.exit(1)
 
         self.interrupted = True
-        print("\n\n[yellow]正在保存进度，请稍候...[/yellow]")
+        print("\n\n正在保存进度，请稍候...")
 
         if self.state_manager:
             try:
                 self.state_manager.save()
-                print("[green]✅ 进度已保存，下次运行可继续[/green]")
+                print("✅ 进度已保存，下次运行可继续")
             except Exception as e:
-                print(f"[red]保存进度失败: {e}[/red]")
+                print(f"保存进度失败: {e}")
 
         sys.exit(0)
 

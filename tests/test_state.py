@@ -480,17 +480,15 @@ class TestStateManagerAdvanced:
 
     def test_state_manager_corrupted_file(self, temp_dir, corrupted_state_file, test_pdf):
         """Test handling of corrupted state file."""
+        # Copy corrupted file to state location
+        state_path = temp_dir / ".state.json"
+        state_path.write_text("{ invalid json", encoding='utf-8')
+
         manager = StateManager(temp_dir)
 
-        # Should handle corrupted file gracefully
-        # Current implementation might raise exception or create new state
-        try:
-            state = manager.load_or_create(test_pdf, {"pdf_type": "text"})
-            # If it works, should have a valid state
-            assert state.source_path == str(test_pdf)
-        except Exception:
-            # If it fails, that's also acceptable behavior
-            pass
+        # Should handle corrupted file gracefully by creating new state
+        state = manager.load_or_create(test_pdf, {"pdf_type": "text"})
+        assert state.source_path == str(test_pdf)
 
     def test_state_manager_multiple_backups(self, temp_dir):
         """Test multiple backups for different steps."""
@@ -562,9 +560,9 @@ class TestStateSerialization:
         assert "updated_at" in data
 
     def test_state_load_invalid_json(self, temp_dir, corrupted_state_file):
-        """Test loading invalid JSON."""
-        with pytest.raises(Exception):
-            State.load(corrupted_state_file)
+        """Test loading invalid JSON returns None."""
+        result = State.load(corrupted_state_file)
+        assert result is None
 
     def test_state_roundtrip_preserves_data(self, test_pdf, temp_dir):
         """Test that save/load preserves all data."""

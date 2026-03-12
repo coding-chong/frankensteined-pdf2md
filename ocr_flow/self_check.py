@@ -268,41 +268,12 @@ def start_umi_ocr() -> Dict[str, Any]:
         }
 
 
-def find_ghostscript() -> str:
+def find_ghostscript() -> Optional[str]:
     """Find Ghostscript executable.
 
     Returns:
         Path to Ghostscript executable or None if not found.
     """
-    # Check config path first
-    # (This would be set from config, for now just search)
-
-    # Common names
-    names = ['gswin64c', 'gswin32c', 'gs', 'gswin64', 'gswin32']
-
-    for name in names:
-        path = shutil.which(name)
-        if path:
-            return path
-
-    # Check common install locations on Windows
-    if shutil.os.name == 'nt':
-        common_paths = [
-            Path('C:/Program Files/gs'),
-            Path('C:/Program Files (x86)/gs'),
-            Path('E:/gs-portable'),
-        ]
-
-        for base in common_paths:
-            if base.exists():
-                # Find the latest version
-                versions = sorted(base.iterdir(), reverse=True)
-                for version_dir in versions:
-                    bin_dir = version_dir / 'bin'
-                    if bin_dir.exists():
-                        for name in ['gswin64c.exe', 'gswin32c.exe']:
-                            exe = bin_dir / name
-                            if exe.exists():
-                                return str(exe)
-
-    return None
+    # Import from compress module to avoid duplication
+    from .steps.compress import find_ghostscript as _find_gs
+    return _find_gs()

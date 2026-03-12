@@ -67,8 +67,12 @@ class State:
         if not state_path.exists():
             return None
 
-        with open(state_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        try:
+            with open(state_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            # Corrupted state file
+            return None
 
         # Convert step dicts to StepStatus objects
         steps = {}

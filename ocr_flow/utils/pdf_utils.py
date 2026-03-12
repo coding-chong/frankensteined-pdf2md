@@ -11,9 +11,11 @@ import fitz  # PyMuPDF
 def get_page_count(pdf_path: Path) -> int:
     """Get the number of pages in a PDF."""
     doc = fitz.open(pdf_path)
-    count = doc.page_count
-    doc.close()
-    return count
+    try:
+        count = doc.page_count
+        return count
+    finally:
+        doc.close()
 
 
 def has_text_layer(pdf_path: Path) -> bool:
@@ -23,18 +25,18 @@ def has_text_layer(pdf_path: Path) -> bool:
         True if any page has extractable text, False otherwise.
     """
     doc = fitz.open(pdf_path)
+    try:
+        for page_num in range(doc.page_count):
+            page = doc[page_num]
+            text = page.get_text()
 
-    for page_num in range(doc.page_count):
-        page = doc[page_num]
-        text = page.get_text()
+            # If any page has meaningful text, it's not a pure scanned PDF
+            if text.strip():
+                return True
 
-        # If any page has meaningful text, it's not a pure scanned PDF
-        if text.strip():
-            doc.close()
-            return True
-
-    doc.close()
-    return False
+        return False
+    finally:
+        doc.close()
 
 
 def get_pdf_info(pdf_path: Path) -> dict:
@@ -46,21 +48,29 @@ def get_pdf_info(pdf_path: Path) -> dict:
     pdf_path = Path(pdf_path)
 
     doc = fitz.open(pdf_path)
-    page_count = doc.page_count
-    doc.close()
+    try:
+        page_count = doc.page_count
 
-    # Check for text
-    has_text = has_text_layer(pdf_path)
+        # Check for text in the same open document
+        has_text = False
+        for page_num in range(page_count):
+            page = doc[page_num]
+            text = page.get_text()
+            if text.strip():
+                has_text = True
+                break
 
-    # File size
-    file_size = pdf_path.stat().st_size
+        # File size
+        file_size = pdf_path.stat().st_size
 
-    return {
-        'page_count': page_count,
-        'has_text': has_text,
-        'file_size': file_size,
-        'pdf_type': 'text' if has_text else 'scanned',
-    }
+        return {
+            'page_count': page_count,
+            'has_text': has_text,
+            'file_size': file_size,
+            'pdf_type': 'text' if has_text else 'scanned',
+        }
+    finally:
+        doc.close()
 
 
 def merge_pdfs(pdf_paths: list, output_path: Path) -> Path:

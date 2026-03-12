@@ -28,29 +28,33 @@ def split_pdf(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     doc = fitz.open(pdf_path)
-    total_pages = doc.page_count
-    total_parts = (total_pages + pages_per_part - 1) // pages_per_part
+    try:
+        total_pages = doc.page_count
+        total_parts = (total_pages + pages_per_part - 1) // pages_per_part
 
-    split_files = []
+        split_files = []
 
-    for start_page in range(0, total_pages, pages_per_part):
-        part_num = start_page // pages_per_part + 1
-        end_page = min(start_page + pages_per_part - 1, total_pages - 1)
+        for start_page in range(0, total_pages, pages_per_part):
+            part_num = start_page // pages_per_part + 1
+            end_page = min(start_page + pages_per_part - 1, total_pages - 1)
 
-        # Create sub-document with the specified pages
-        sub_doc = fitz.open()
-        sub_doc.insert_pdf(doc, from_page=start_page, to_page=end_page)
+            # Create sub-document with the specified pages
+            sub_doc = fitz.open()
+            try:
+                sub_doc.insert_pdf(doc, from_page=start_page, to_page=end_page)
 
-        # Save with consistent naming
-        output_name = f"part_{part_num:03d}.pdf"
-        output_path = output_dir / output_name
-        sub_doc.save(output_path)
-        sub_doc.close()
+                # Save with consistent naming
+                output_name = f"part_{part_num:03d}.pdf"
+                output_path = output_dir / output_name
+                sub_doc.save(output_path)
 
-        split_files.append(output_path)
+                split_files.append(output_path)
+            finally:
+                sub_doc.close()
 
-    doc.close()
-    return split_files
+        return split_files
+    finally:
+        doc.close()
 
 
 def get_page_count(pdf_path: Path) -> int:
