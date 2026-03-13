@@ -226,7 +226,7 @@ class MinerUClient:
                     ctx.check_hostname = False
                     ctx.verify_mode = ssl.CERT_NONE
                     ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT
-                    ctx.minimum_version = ssl.TLSVersion.TLSv1
+                    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
                     ctx.maximum_version = ssl.TLSVersion.MAXIMUM_SUPPORTED
                     kwargs['ssl_context'] = ctx
                     return super().init_poolmanager(*args, **kwargs)
