@@ -71,7 +71,10 @@ class State:
             with open(state_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            # Corrupted state file
+            # Corrupted state file - log warning and return None
+            import logging
+            logger = logging.getLogger('ocr_flow')
+            logger.warning(f"Corrupted state file {state_path}: {e}. Starting fresh.")
             return None
 
         # Convert step dicts to StepStatus objects
