@@ -115,13 +115,15 @@ def extract_page(pdf_path: Path, page_num: int, output_path: Path) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     src = fitz.open(pdf_path)
-    dst = fitz.open()
-
-    if 0 <= page_num < src.page_count:
-        dst.insert_pdf(src, from_page=page_num, to_page=page_num)
-
-    dst.save(output_path)
-    dst.close()
-    src.close()
+    try:
+        dst = fitz.open()
+        try:
+            if 0 <= page_num < src.page_count:
+                dst.insert_pdf(src, from_page=page_num, to_page=page_num)
+            dst.save(output_path)
+        finally:
+            dst.close()
+    finally:
+        src.close()
 
     return output_path
