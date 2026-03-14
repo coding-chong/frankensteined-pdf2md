@@ -4,13 +4,16 @@
 
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ocr_flow.config import Config
 
 
 def translate_pdf(
     input_path: Path,
     output_path: Path,
-    config,
+    config: "Config",
     timeout: int = 3600,
 ) -> Path:
     """Translate a PDF using BabelDOC.

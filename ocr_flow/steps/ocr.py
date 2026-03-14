@@ -5,14 +5,18 @@
 import json
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import requests
+
+if TYPE_CHECKING:
+    from ocr_flow.config import Config
 
 
 def ocr_pdf(
     input_path: Path,
     output_path: Path,
-    config,
+    config: "Config",
     timeout: int = 600,
 ) -> Path:
     """Process a scanned PDF with OCR using UMI OCR.
