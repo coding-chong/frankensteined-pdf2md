@@ -441,12 +441,15 @@ def process(input_path: str, output: str, config: str, verbose: bool,
     # S2.4: Ask to open output directory
     if click.confirm("是否打开输出目录?", default=True):
         import subprocess
-        if sys.platform == 'win32':
-            subprocess.run(['explorer', str(output_dir)])
-        elif sys.platform == 'darwin':
-            subprocess.run(['open', str(output_dir)])
-        else:
-            subprocess.run(['xdg-open', str(output_dir)])
+        try:
+            if sys.platform == 'win32':
+                subprocess.run(['explorer', str(output_dir)], check=False)
+            elif sys.platform == 'darwin':
+                subprocess.run(['open', str(output_dir)], check=False)
+            else:
+                subprocess.run(['xdg-open', str(output_dir)], check=False)
+        except (OSError, subprocess.SubprocessError) as e:
+            console.print(f"[yellow]无法打开目录: {e}[/yellow]")
 
 
 @cli.command()
