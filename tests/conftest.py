@@ -11,9 +11,37 @@ import tempfile
 import shutil
 import json
 import fitz  # PyMuPDF
+from unittest.mock import patch
 
 from ocr_flow.config import Config, UmiOcrConfig, BabelDocConfig, CompressConfig, MinerUConfig, PostProcessConfig
 from ocr_flow.state import State, StateManager
+
+
+# =============================================================================
+# Auto-use Fixtures
+# =============================================================================
+
+@pytest.fixture(autouse=True)
+def prevent_explorer_open():
+    """Prevent explorer/file manager from opening during tests.
+
+    This fixture automatically blocks subprocess calls that would open
+    the file manager (explorer on Windows, open on macOS, xdg-open on Linux)
+    only when called with specific commands.
+    """
+    original_run = __import__('subprocess').run
+
+    def mock_run(cmd, *args, **kwargs):
+        # Block explorer/open/xdg-open commands
+        if cmd and isinstance(cmd, list) and len(cmd) > 0:
+            first_arg = cmd[0] if isinstance(cmd[0], str) else str(cmd[0])
+            if first_arg in ('explorer', 'open', 'xdg-open'):
+                return __import__('subprocess').CompletedProcess(cmd, 0)
+        # Allow all other subprocess.run calls
+        return original_run(cmd, *args, **kwargs)
+
+    with patch('subprocess.run', side_effect=mock_run):
+        yield
 
 
 # =============================================================================

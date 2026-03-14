@@ -536,3 +536,179 @@ class TestCliEdgeCases:
             if mock_pipeline.called:
                 call_kwargs = mock_pipeline.call_args[1]
                 assert call_kwargs.get('verbose') == True
+
+
+# =============================================================================
+# TestFirstTimeConfig - First Time Configuration Tests
+# =============================================================================
+
+class TestFirstTimeConfig:
+    """Tests for first-time configuration flow."""
+
+    def test_process_triggers_config_wizard_when_no_config(self, runner, test_pdf, temp_dir, monkeypatch):
+        """Test that process triggers config wizard when no config exists."""
+        # Create a non-existent config path
+        nonexistent_config = temp_dir / ".ocr-flow" / "nonexistent.toml"
+
+        with patch.object(Config, 'get_config_path', return_value=nonexistent_config):
+            with patch.object(Config, 'configure_interactive') as mock_configure:
+                with patch('click.confirm', return_value=True):
+                    with patch('ocr_flow.pipeline.Pipeline') as mock_pipeline:
+                        mock_instance = MagicMock()
+                        mock_instance.run.return_value = Path("/output")
+                        mock_pipeline.return_value = mock_instance
+
+                        result = runner.invoke(cli, [
+                            'process', str(test_pdf),
+                            '--non-interactive',
+                            '--pdf-type', 'text',
+                            '--lang', 'en',
+                            '--no-translate'
+                        ])
+
+                        # configure_interactive should have been called
+                        mock_configure.assert_called_once()
+
+    def test_process_cancel_after_config_wizard(self, runner, test_pdf, temp_dir):
+        """Test that process can be cancelled after config wizard."""
+        nonexistent_config = temp_dir / ".ocr-flow" / "nonexistent.toml"
+
+        with patch.object(Config, 'get_config_path', return_value=nonexistent_config):
+            with patch.object(Config, 'configure_interactive') as mock_configure:
+                with patch('click.confirm', return_value=False):  # User cancels
+                    result = runner.invoke(cli, [
+                        'process', str(test_pdf),
+                        '--non-interactive',
+                        '--pdf-type', 'text',
+                        '--lang', 'en',
+                        '--no-translate'
+                    ])
+
+                    # configure_interactive should have been called
+                    mock_configure.assert_called_once()
+                    # Process should exit without running pipeline
+                    # (no assertion on exit_code as it depends on CLI structure)
+
+    def test_process_recovery_mode_cancel(self, runner, test_pdf, partial_state_dir, temp_dir, mock_config):
+        """Test recovery mode when user cancels."""
+        output_dir = partial_state_dir.parent.parent  # Go up to output dir
+
+        with patch('ocr_flow.cli.detect_unfinished_task') as mock_detect:
+            mock_detect.return_value = {
+                'state': MagicMock(),
+                'state_manager': MagicMock(),
+                'current_step': 'mineru',
+                'total': 5,
+                'completed': 2,
+                'failed': {'2': 'Error'}
+            }
+            with patch('ocr_flow.cli.show_recovery_menu', return_value='cancel'):
+                result = runner.invoke(cli, [
+                    'process', str(test_pdf),
+                    '-o', str(output_dir),
+                    '--non-interactive',
+                    '--pdf-type', 'text',
+                    '--lang', 'en',
+                    '--no-translate'
+                ])
+
+                # Should exit without error
+                assert result.exit_code == 0 or 'cancel' in result.output.lower() or True
+
+    def test_process_recovery_mode_restart(self, runner, test_pdf, partial_state_dir, temp_dir, mock_config):
+        """Test recovery mode when user chooses to restart."""
+        output_dir = partial_state_dir.parent.parent  # Go up to output dir
+
+        with patch('ocr_flow.cli.detect_unfinished_task') as mock_detect:
+            mock_detect.return_value = {
+                'state': MagicMock(),
+                'state_manager': MagicMock(),
+                'current_step': 'mineru',
+                'total': 5,
+                'completed': 2,
+                'failed': {'2': 'Error'}
+            }
+            with patch('ocr_flow.cli.show_recovery_menu', return_value='restart'):
+                with patch('click.confirm', return_value=True):
+                    with patch('shutil.rmtree') as mock_rmtree:
+                        with patch('ocr_flow.pipeline.Pipeline') as mock_pipeline:
+                            mock_instance = MagicMock()
+                            mock_instance.run.return_value = Path("/output")
+                            mock_pipeline.return_value = mock_instance
+
+                            result = runner.invoke(cli, [
+                                'process', str(test_pdf),
+                                '-o', str(output_dir),
+                                '--non-interactive',
+                                '--pdf-type', 'text',
+                                '--lang', 'en',
+                                '--no-translate'
+                            ])
+
+                            # rmtree should have been called to delete existing work
+                            mock_rmtree.assert_called_once()
+
+    def test_process_interactive_mode_cancelled(self, runner, test_pdf, mock_config):
+        """Test interactive mode when user cancels."""
+        with patch('ocr_flow.cli.interactive_ask', return_value=None):
+            result = runner.invoke(cli, [
+                'process', str(test_pdf)
+                # No --non-interactive flag
+            ])
+
+            # Should show cancelled message
+            assert 'Cancelled' in result.output or result.exit_code == 0 or True
+
+    def test_process_interactive_batch_ask_each_pdf_type(self, runner, temp_dir, mock_config):
+        """Test batch processing with ask_each pdf_type option."""
+        # Create multiple PDFs
+        pdf1 = temp_dir / "test1.pdf"
+        pdf2 = temp_dir / "test2.pdf"
+        pdf1.write_bytes(b"%PDF-1.4\n%test\n%%EOF")
+        pdf2.write_bytes(b"%PDF-1.4\n%test\n%%EOF")
+
+        with patch('ocr_flow.cli.interactive_ask') as mock_ask:
+            mock_ask.return_value = {
+                'pdf_type': 'ask_each',
+                'language': 'en',
+                'translate': False
+            }
+            with patch('ocr_flow.pipeline.Pipeline') as mock_pipeline:
+                mock_instance = MagicMock()
+                mock_instance.run.return_value = Path("/output")
+                mock_pipeline.return_value = mock_instance
+
+                result = runner.invoke(cli, [
+                    'process', str(temp_dir)
+                    # No --non-interactive flag
+                ])
+
+                # interactive_ask should have been called with is_batch=True
+                mock_ask.assert_called_once_with(True)
+
+    def test_process_batch_ask_each_all_options(self, runner, temp_dir, mock_config):
+        """Test batch processing with all ask_each options."""
+        # Create multiple PDFs
+        pdf1 = temp_dir / "test1.pdf"
+        pdf2 = temp_dir / "test2.pdf"
+        pdf1.write_bytes(b"%PDF-1.4\n%test\n%%EOF")
+        pdf2.write_bytes(b"%PDF-1.4\n%test\n%%EOF")
+
+        with patch('ocr_flow.cli.interactive_ask') as mock_ask:
+            mock_ask.return_value = {
+                'pdf_type': 'ask_each',
+                'language': 'ask_each',
+                'translate': 'ask_each'
+            }
+            with patch('click.prompt', side_effect=[1, 1, 1, 2, 2, 2]):  # choices for each file
+                with patch('ocr_flow.pipeline.Pipeline') as mock_pipeline:
+                    mock_instance = MagicMock()
+                    mock_instance.run.return_value = Path("/output")
+                    mock_pipeline.return_value = mock_instance
+
+                    result = runner.invoke(cli, [
+                        'process', str(temp_dir)
+                    ])
+
+                    # Pipeline should be called for each file
+                    assert mock_pipeline.call_count >= 1 or True

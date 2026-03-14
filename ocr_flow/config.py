@@ -123,7 +123,9 @@ class Config:
         # BabelDOC
         if 'babeldoc' in data:
             babel = data['babeldoc']
-            config.babeldoc.path = babel.get('path', config.babeldoc.path)
+            # Convert empty strings to None for path
+            path_val = babel.get('path', config.babeldoc.path)
+            config.babeldoc.path = path_val if path_val else None
             config.babeldoc.lang_in = babel.get('lang_in', config.babeldoc.lang_in)
             config.babeldoc.lang_out = babel.get('lang_out', config.babeldoc.lang_out)
             config.babeldoc.openai = babel.get('openai', config.babeldoc.openai)
@@ -134,7 +136,9 @@ class Config:
         # Compress
         if 'compress' in data:
             comp = data['compress']
-            config.compress.ghostscript_path = comp.get('ghostscript_path', config.compress.ghostscript_path)
+            # Convert empty strings to None for ghostscript_path
+            gs_path_val = comp.get('ghostscript_path', config.compress.ghostscript_path)
+            config.compress.ghostscript_path = gs_path_val if gs_path_val else None
             config.compress.quality = comp.get('quality', config.compress.quality)
 
         # MinerU
