@@ -68,7 +68,7 @@ def check_url_accessible(url: str, timeout: int = 10) -> bool:
     try:
         response = requests.head(url, timeout=timeout, verify=False)
         return response.status_code == 200
-    except:
+    except requests.exceptions.RequestException:
         return False
 
 

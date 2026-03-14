@@ -115,8 +115,8 @@ def ocr_pdf(
     # Step 5: Cleanup task
     try:
         requests.get(f"{url}/api/doc/clear/{task_id}", timeout=10)
-    except:
-        pass
+    except requests.exceptions.RequestException:
+        pass  # Cleanup failure is non-critical
 
     print(f"  OCR completed: {output_path}")
     return output_path
@@ -134,5 +134,5 @@ def check_umi_ocr_service(url: str = "http://127.0.0.1:1224") -> bool:
     try:
         response = requests.get(f"{url}/api/doc/get_options", timeout=5)
         return response.status_code == 200
-    except:
+    except requests.exceptions.RequestException:
         return False

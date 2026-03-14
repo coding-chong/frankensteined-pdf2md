@@ -144,12 +144,12 @@ def check_babeldoc_available(config) -> bool:
         try:
             subprocess.run(['uv', '--version'], capture_output=True, check=True)
             return True
-        except:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             return False
 
     # Check global install
     try:
         subprocess.run(['babeldoc', '--version'], capture_output=True, check=True)
         return True
-    except:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return False

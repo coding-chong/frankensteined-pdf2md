@@ -114,8 +114,8 @@ class SelfCheck:
                                     'message': f'Service started and running at {url}',
                                     'started': True
                                 }
-                        except:
-                            pass
+                        except requests.exceptions.RequestException:
+                            pass  # Service not ready yet, continue waiting
                     return {
                         'ok': False,
                         'message': f'Service started but not responding at {url}'
