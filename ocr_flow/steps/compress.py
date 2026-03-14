@@ -107,11 +107,15 @@ def compress_pdf(
         str(input_path),
     ]
 
-    # Run Ghostscript
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # Run Ghostscript with timeout
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Ghostscript timeout (>300s). File may be too large or complex.")
 
     if result.returncode != 0:
-        raise RuntimeError(f"Ghostscript failed: {result.stderr}")
+        error_msg = result.stderr.strip() or f"Exit code {result.returncode}"
+        raise RuntimeError(f"Ghostscript failed: {error_msg}")
 
     return output_path
 
