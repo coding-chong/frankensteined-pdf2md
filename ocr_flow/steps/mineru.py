@@ -7,6 +7,7 @@ import time
 import zipfile
 import tempfile
 import ssl
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -91,7 +92,13 @@ class MinerUClient:
                     json=data,
                     timeout=30
                 )
-                result = response.json()
+                try:
+                    result = response.json()
+                except json.JSONDecodeError:
+                    if attempt == self.max_retries - 1:
+                        raise RuntimeError(f"Invalid JSON response from API (status {response.status_code})")
+                    time.sleep(self.retry_delay)
+                    continue
 
                 if result.get("code") != 0:
                     raise RuntimeError(f"Failed to get upload URL: {result.get('msg')}")
@@ -129,7 +136,12 @@ class MinerUClient:
                     headers=self.headers,
                     timeout=30
                 )
-                result = response.json()
+                try:
+                    result = response.json()
+                except json.JSONDecodeError:
+                    print(f"  Poll error: invalid JSON response, retrying...")
+                    time.sleep(self.poll_interval)
+                    continue
 
                 if result.get("code") != 0:
                     raise RuntimeError(f"Poll error: {result.get('msg')}")
