@@ -57,8 +57,11 @@ class SelfCheck:
                 if result.returncode == 0:
                     version = result.stdout.strip()
                     return {'ok': True, 'message': f'Found (version {version}) at {gs_path}'}
-            except Exception as e:
-                pass
+            except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+                return {
+                    'ok': False,
+                    'message': f'Found at {gs_path} but failed to run: {e}'
+                }
 
         return {
             'ok': False,
@@ -126,7 +129,7 @@ class SelfCheck:
                         'message': f"Service not running. {result['message']}"
                     }
             return {'ok': False, 'message': f'Service not running at {url}. Start UMI OCR application.'}
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             return {'ok': False, 'message': f'Check failed: {e}'}
 
     def check_babeldoc(self) -> Dict[str, Any]:
@@ -151,8 +154,8 @@ class SelfCheck:
                 return {'ok': True, 'message': 'Globally installed'}
         except FileNotFoundError:
             pass
-        except Exception:
-            pass
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
+            pass  # Other subprocess errors, babeldoc check failed
 
         return {
             'ok': False,
