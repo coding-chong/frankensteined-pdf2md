@@ -262,6 +262,7 @@ class MinerUClient:
             import subprocess
             curl_path = shutil.which('curl')
             if curl_path:
+                print("  Trying Method 3 (curl -k)...")
                 with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
                     tmp_path = tmp.name
 
@@ -277,7 +278,12 @@ class MinerUClient:
                     with zipfile.ZipFile(tmp_path, 'r') as zf:
                         zf.extractall(output_dir)
                     os.unlink(tmp_path)
+                    print("  Method 3 (curl) succeeded!")
                     return self._find_md_file(output_dir)
+                else:
+                    print(f"  Method 3 (curl) failed: returncode={result.returncode}")
+            else:
+                print("  Method 3 (curl) skipped: curl not found")
         except Exception as e:
             print(f"  Method 3 (curl) failed: {e}")
 
