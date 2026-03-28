@@ -88,6 +88,22 @@ ocr-flow process input.pdf -o output/ --non-interactive --pdf-type auto --lang e
 ocr-flow process input.pdf -o output/ --non-interactive --pdf-type text --lang en --translate -v
 ```
 
+### 翻译后压缩
+
+翻译后的 PDF 默认不压缩（保留字体子集化，文件较小）。如需压缩，使用 `--compress` 选项：
+
+```bash
+# 翻译并压缩（禁用字体子集化以兼容 Ghostscript）
+ocr-flow process input.pdf -o output/ --non-interactive --pdf-type text --lang en --translate --compress -v
+```
+
+**两种模式对比：**
+
+| 模式 | 命令 | 文件大小 | 说明 |
+|------|------|---------|------|
+| 默认 | `--translate` | 较小 | 字体子集化，不压缩 |
+| 压缩 | `--translate --compress` | 最小 | 禁用子集化，Ghostscript 压缩 |
+
 ### 扫描版 PDF
 
 ```bash
