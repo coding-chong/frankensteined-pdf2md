@@ -45,6 +45,7 @@ def translate_pdf(
         '--watermark-output-mode=no_watermark',
         '--lang-in', config.babeldoc.lang_in,
         '--lang-out', config.babeldoc.lang_out,
+        '--qps', str(config.babeldoc.qps),  # QPS limit for translation API
     ])
 
     # Add OpenAI config if enabled

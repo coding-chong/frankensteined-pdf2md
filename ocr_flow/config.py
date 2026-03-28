@@ -42,6 +42,7 @@ class BabelDocConfig:
     openai_model: str = "qwen3.5-flash"
     openai_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     openai_api_key: str = ""
+    qps: int = 2  # QPS limit for translation API (max recommended: 3)
 
 
 @dataclass
@@ -130,6 +131,7 @@ class Config:
             config.babeldoc.openai_model = babel.get('openai_model', config.babeldoc.openai_model)
             config.babeldoc.openai_base_url = babel.get('openai_base_url', config.babeldoc.openai_base_url)
             config.babeldoc.openai_api_key = babel.get('openai_api_key', config.babeldoc.openai_api_key)
+            config.babeldoc.qps = babel.get('qps', config.babeldoc.qps)
 
         # Compress
         if 'compress' in data:
@@ -178,6 +180,7 @@ class Config:
                 'openai_model': self.babeldoc.openai_model,
                 'openai_base_url': self.babeldoc.openai_base_url,
                 'openai_api_key': self.babeldoc.openai_api_key,
+                'qps': self.babeldoc.qps,
             },
             'compress': {
                 'ghostscript_path': self.compress.ghostscript_path or '',
