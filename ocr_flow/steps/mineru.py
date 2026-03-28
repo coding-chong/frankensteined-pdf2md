@@ -235,6 +235,7 @@ class MinerUClient:
             session = requests.Session()
             session.mount('https://', SSLAdapter())
             # Don't use proxy for MinerU CDN (SSL issues with proxy CONNECT tunnel)
+            session.trust_env = False  # Disable environment-based proxy settings
 
             with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
                 tmp_path = tmp.name
@@ -267,12 +268,22 @@ class MinerUClient:
                     tmp_path = tmp.name
 
                 # Don't use proxy - curl -k doesn't work through proxy CONNECT tunnel
+                # Create a clean environment without proxy settings
+                env = os.environ.copy()
+                env.pop('http_proxy', None)
+                env.pop('https_proxy', None)
+                env.pop('all_proxy', None)
+                env.pop('HTTP_PROXY', None)
+                env.pop('HTTPS_PROXY', None)
+                env.pop('ALL_PROXY', None)
+
                 curl_cmd = [curl_path, '-L', '-k', '-o', tmp_path, zip_url]
 
                 result = subprocess.run(
                     curl_cmd,
                     capture_output=True,
-                    timeout=120
+                    timeout=120,
+                    env=env  # Use clean environment without proxy
                 )
                 if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
                     with zipfile.ZipFile(tmp_path, 'r') as zf:
