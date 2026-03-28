@@ -220,25 +220,39 @@ class Pipeline:
                 self.state_manager.save()
 
                 # Step 4: Compress
-                if self.verbose:
-                    print(f"[4/7] Compressing PDF files...")
-                self.logger.info("Step 4: Compressing PDF files")
+                # NOTE: Skip compression for translated PDFs because Ghostscript's pdfwrite
+                # device re-encodes CJK font character maps, causing MinerU to produce
+                # garbled Chinese text. See: https://github.com/funstory-ai/BabelDOC/issues
+                if translate:
+                    if self.verbose:
+                        print("[4/7] Skipping compression for translated PDF (preserves CJK font encoding)...")
+                    self.logger.info("Step 4: Skipping compression for translated PDF")
+                    # Use split files directly without compression
+                    compressed_files = split_files
+                    state.update_step("compress", status="skipped")
+                    self.state_manager.save()
+                else:
+                    if self.verbose:
+                        print(f"[4/7] Compressing PDF files...")
+                    self.logger.info("Step 4: Compressing PDF files")
 
-                compress_dir = intermediate_dir / "compressed"
-                compress_dir.mkdir(exist_ok=True)
-                compressed_files = []
-                for split_file in split_files:
-                    compressed = compress_pdf(split_file, compress_dir, self.config)
-                    compressed_files.append(compressed)
-                    self.state_manager.backup_file("compress", compressed)
+                    compress_dir = intermediate_dir / "compressed"
+                    compress_dir.mkdir(exist_ok=True)
+                    compressed_files = []
+                    for split_file in split_files:
+                        compressed = compress_pdf(split_file, compress_dir, self.config)
+                        compressed_files.append(compressed)
+                        self.state_manager.backup_file("compress", compressed)
 
-                state.update_step("compress", status="completed", output_dir=str(compress_dir),
-                                files=[f.name for f in compressed_files])
+                    state.update_step("compress", status="completed", output_dir=str(compress_dir),
+                                    files=[f.name for f in compressed_files])
+                    self.state_manager.save()
+
                 state.total_pages = len(compressed_files)
-                self.state_manager.save()
 
-                # S3.2: Show size comparison
-                self._show_size_comparison(input_pdf, compressed_files)
+                # S3.2: Show size comparison (only when compression was performed)
+                if not translate:
+                    self._show_size_comparison(input_pdf, compressed_files)
 
                 # Step 5: MinerU API
                 if self.verbose:
