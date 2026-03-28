@@ -239,9 +239,10 @@ def cli():
 @click.option('--pdf-type', type=click.Choice(['text', 'scanned', 'auto']), default='auto', help='PDF type: text, scanned, or auto-detect (default: auto)')
 @click.option('--lang', type=click.Choice(['en', 'zh']), help='Document language (non-interactive mode)')
 @click.option('--translate/--no-translate', default=None, help='Translate to Chinese (non-interactive mode)')
+@click.option('--compress', is_flag=True, help='Compress translated PDFs (disables font subsetting to preserve CJK encoding)')
 @click.option('--recovery', type=click.Choice(['continue', 'retry', 'continue_retry', 'restart']), default=None, help='Recovery mode for non-interactive mode: continue, retry, continue_retry, restart')
 def process(input_path: str, output: str, config: str, verbose: bool,
-            non_interactive: bool, pdf_type: str, lang: str, translate: bool, recovery: str):
+            non_interactive: bool, pdf_type: str, lang: str, translate: bool, compress: bool, recovery: str):
     """Process PDF file(s) to Markdown.
 
     INPUT_PATH: PDF file or directory containing PDF files
@@ -423,6 +424,7 @@ def process(input_path: str, output: str, config: str, verbose: bool,
                     pdf_type=file_pdf_type,
                     language=file_lang,
                     translate=file_translate,
+                    compress=compress,
                     recovery_mode=recovery_mode,
                     state_info=state_info if recovery_mode else None
                 )

@@ -11,6 +11,7 @@ def translate_pdf(
     input_path: Path,
     output_path: Path,
     config,
+    skip_clean: bool = False,
     timeout: int = 3600,
 ) -> Path:
     """Translate a PDF using BabelDOC.
@@ -19,6 +20,7 @@ def translate_pdf(
         input_path: Path to input PDF
         output_path: Path to save translated PDF (for reference, actual output is in output_dir)
         config: Config object with babeldoc settings
+        skip_clean: Whether to skip font subsetting (use when compressing with Ghostscript)
         timeout: Maximum processing time in seconds
 
     Returns:
@@ -47,6 +49,11 @@ def translate_pdf(
         '--lang-out', config.babeldoc.lang_out,
         '--qps', str(config.babeldoc.qps),  # QPS limit for translation API
     ])
+
+    # Skip font subsetting when compressing with Ghostscript
+    # This preserves CJK font encoding to avoid garbled text after compression
+    if skip_clean:
+        cmd.append('--skip-clean')
 
     # Add OpenAI config if enabled
     if config.babeldoc.openai:

@@ -120,6 +120,7 @@ class Pipeline:
         pdf_type: str = "text",
         language: str = "en",
         translate: bool = False,
+        compress: bool = False,
         recovery_mode: str = None,
         state_info: Dict[str, Any] = None,
     ) -> Path:
@@ -131,6 +132,7 @@ class Pipeline:
             pdf_type: 'text' or 'scanned'
             language: 'en' or 'zh'
             translate: Whether to translate to Chinese
+            compress: Whether to compress translated PDFs (disables font subsetting)
             recovery_mode: 'continue' | 'retry' | 'continue_retry' | 'restart' | None
             state_info: Existing state info for recovery
 
@@ -154,13 +156,14 @@ class Pipeline:
         # S2.2: Setup logger
         self.logger = self._setup_logger(work_dir)
         self.logger.info(f"Starting pipeline for: {input_pdf}")
-        self.logger.info(f"Options: pdf_type={pdf_type}, language={language}, translate={translate}")
+        self.logger.info(f"Options: pdf_type={pdf_type}, language={language}, translate={translate}, compress={compress}")
 
         # Initialize state
         options = {
             'pdf_type': pdf_type,
             'language': language,
             'translate': translate,
+            'compress': compress,
         }
         self.state_manager = StateManager(work_dir)
 
@@ -201,7 +204,7 @@ class Pipeline:
                         print(f"[2/7] Translating: {current_pdf}")
                     from .steps.translate import translate_pdf
                     translate_output = intermediate_dir / "translated.dual.pdf"
-                    current_pdf = translate_pdf(current_pdf, translate_output, self.config)
+                    current_pdf = translate_pdf(current_pdf, translate_output, self.config, skip_clean=compress)
                     self.state_manager.backup_file("translate", current_pdf)
                     state.update_step("translate", status="completed", output=str(current_pdf))
                     self.state_manager.save()
@@ -220,13 +223,12 @@ class Pipeline:
                 self.state_manager.save()
 
                 # Step 4: Compress
-                # NOTE: Skip compression for translated PDFs because Ghostscript's pdfwrite
-                # device re-encodes CJK font character maps, causing MinerU to produce
-                # garbled Chinese text. See: https://github.com/funstory-ai/BabelDOC/issues
-                if translate:
+                # By default, skip compression for translated PDFs to preserve CJK font encoding.
+                # Use --compress flag to enable compression (disables font subsetting instead).
+                if translate and not compress:
                     if self.verbose:
-                        print("[4/7] Skipping compression for translated PDF (preserves CJK font encoding)...")
-                    self.logger.info("Step 4: Skipping compression for translated PDF")
+                        print("[4/7] Skipping compression for translated PDF (use --compress to enable)...")
+                    self.logger.info("Step 4: Skipping compression for translated PDF (font subsetting preserved)")
                     # Use split files directly without compression
                     compressed_files = split_files
                     state.update_step("compress", status="skipped")
@@ -251,7 +253,7 @@ class Pipeline:
                 state.total_pages = len(compressed_files)
 
                 # S3.2: Show size comparison (only when compression was performed)
-                if not translate:
+                if not translate or compress:
                     self._show_size_comparison(input_pdf, compressed_files)
 
                 # Step 5: MinerU API
