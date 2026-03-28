@@ -140,7 +140,7 @@ class TestCheckGhostscript:
         # Mock find_ghostscript to return a path
         monkeypatch.setattr(
             'ocr_flow.self_check.find_ghostscript',
-            lambda: '/usr/bin/gs'
+            lambda config=None: '/usr/bin/gs'
         )
 
         # Mock subprocess.run
@@ -159,7 +159,7 @@ class TestCheckGhostscript:
         """Test when Ghostscript is not found."""
         monkeypatch.setattr(
             'ocr_flow.self_check.find_ghostscript',
-            lambda: None
+            lambda config=None: None
         )
 
         checker = SelfCheck(config=mock_config)

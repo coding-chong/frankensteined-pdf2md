@@ -8,8 +8,9 @@
 
 1. **Python 3.9+**
 2. **Ghostscript** - [下载地址](https://ghostscript.com/)
-3. **UMI OCR**（可选，用于扫描版 PDF）- [下载地址](https://github.com/hiroi-sora/Umi-OCR/releases)
-4. **BabelDOC**（可选，用于翻译）- [安装指南](https://github.com/funstory-ai/BabelDOC)
+3. **pythonnet**（Windows 必需）- 用于解决 MinerU CDN 下载时的 SSL 问题
+4. **UMI OCR**（可选，用于扫描版 PDF）- [下载地址](https://github.com/hiroi-sora/Umi-OCR/releases)
+5. **BabelDOC**（可选，用于翻译）- [安装指南](https://github.com/funstory-ai/BabelDOC)
 
 ### 安装 OCR Flow
 
@@ -19,12 +20,19 @@ uv venv
 uv pip install -e .
 ```
 
-### 安装可选依赖
+### 安装 Windows 必需依赖
 
 ```bash
-# .NET WebClient（Windows 下更好的 SSL 兼容性）
+# Windows 必需：解决 MinerU CDN 下载时的 SSL 错误
 uv pip install pythonnet
 
+# 代理支持（如果使用代理）
+uv pip install PySocks
+```
+
+### 安装开发依赖
+
+```bash
 # 单元测试
 uv pip install -e ".[dev]"
 ```

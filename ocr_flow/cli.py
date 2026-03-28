@@ -239,8 +239,9 @@ def cli():
 @click.option('--pdf-type', type=click.Choice(['text', 'scanned', 'auto']), default='auto', help='PDF type: text, scanned, or auto-detect (default: auto)')
 @click.option('--lang', type=click.Choice(['en', 'zh']), help='Document language (non-interactive mode)')
 @click.option('--translate/--no-translate', default=None, help='Translate to Chinese (non-interactive mode)')
+@click.option('--recovery', type=click.Choice(['continue', 'retry', 'continue_retry', 'restart']), default=None, help='Recovery mode for non-interactive mode: continue, retry, continue_retry, restart')
 def process(input_path: str, output: str, config: str, verbose: bool,
-            non_interactive: bool, pdf_type: str, lang: str, translate: bool):
+            non_interactive: bool, pdf_type: str, lang: str, translate: bool, recovery: str):
     """Process PDF file(s) to Markdown.
 
     INPUT_PATH: PDF file or directory containing PDF files
@@ -298,14 +299,23 @@ def process(input_path: str, output: str, config: str, verbose: bool,
                     if potential_state.exists():
                         state_info = detect_unfinished_task(subsubdir)
                         if state_info:
-                            recovery_mode = show_recovery_menu(state_info)
-                            if recovery_mode == 'cancel':
-                                return
-                            elif recovery_mode == 'restart':
-                                # Delete existing work
-                                if click.confirm(f"确认删除 {subsubdir}?", default=False):
+                            # Non-interactive mode: use --recovery parameter
+                            if non_interactive and recovery:
+                                recovery_mode = recovery
+                                console.print(f"\n[bold yellow][*] 检测到上次未完成的任务，使用恢复模式: {recovery_mode}[/bold yellow]")
+                                if recovery_mode == 'restart':
                                     shutil.rmtree(subsubdir)
                                     console.print("[yellow]已删除，将重新开始[/yellow]")
+                            else:
+                                # Interactive mode: show menu
+                                recovery_mode = show_recovery_menu(state_info)
+                                if recovery_mode == 'cancel':
+                                    return
+                                elif recovery_mode == 'restart':
+                                    # Delete existing work
+                                    if click.confirm(f"确认删除 {subsubdir}?", default=False):
+                                        shutil.rmtree(subsubdir)
+                                        console.print("[yellow]已删除，将重新开始[/yellow]")
                             break
             if recovery_mode:
                 break

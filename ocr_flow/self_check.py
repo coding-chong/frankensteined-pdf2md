@@ -45,7 +45,7 @@ class SelfCheck:
 
     def check_ghostscript(self) -> Dict[str, Any]:
         """Check if Ghostscript is installed."""
-        gs_path = find_ghostscript()
+        gs_path = find_ghostscript(self.config)
         if gs_path:
             try:
                 result = subprocess.run(
@@ -268,14 +268,20 @@ def start_umi_ocr() -> Dict[str, Any]:
         }
 
 
-def find_ghostscript() -> str:
+def find_ghostscript(config=None) -> str:
     """Find Ghostscript executable.
+
+    Args:
+        config: Config object with ghostscript_path setting
 
     Returns:
         Path to Ghostscript executable or None if not found.
     """
     # Check config path first
-    # (This would be set from config, for now just search)
+    if config and config.compress.ghostscript_path:
+        gs_path = config.compress.ghostscript_path
+        if Path(gs_path).exists():
+            return gs_path
 
     # Common names
     names = ['gswin64c', 'gswin32c', 'gs', 'gswin64', 'gswin32']
@@ -290,6 +296,8 @@ def find_ghostscript() -> str:
         common_paths = [
             Path('C:/Program Files/gs'),
             Path('C:/Program Files (x86)/gs'),
+            Path('D:/Program Files/gs'),
+            Path('E:/Program Files/gs'),
             Path('E:/gs-portable'),
         ]
 

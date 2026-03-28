@@ -216,6 +216,7 @@ class MinerUClient:
                 print(f"  Method 1 (.NET WebClient) failed: {e}")
 
         # Method 2: Try requests with custom SSL
+        # NOTE: Don't use proxy for MinerU CDN due to SSL certificate issues
         try:
             from requests.adapters import HTTPAdapter
             from urllib3.util.ssl_ import create_urllib3_context
@@ -233,6 +234,7 @@ class MinerUClient:
 
             session = requests.Session()
             session.mount('https://', SSLAdapter())
+            # Don't use proxy for MinerU CDN (SSL issues with proxy CONNECT tunnel)
 
             with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
                 tmp_path = tmp.name
@@ -253,16 +255,21 @@ class MinerUClient:
                 os.unlink(tmp_path)
             print(f"  Method 2 (requests) failed: {e}")
 
-        # Method 3: Try curl (uses Windows Schannel)
+        # Method 3: Try curl with -k flag (skip SSL verification)
+        # NOTE: Don't use proxy for MinerU CDN due to SSL issues with CONNECT tunnel
         try:
             import shutil
             import subprocess
-            if shutil.which('curl'):
+            curl_path = shutil.which('curl')
+            if curl_path:
                 with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
                     tmp_path = tmp.name
 
+                # Don't use proxy - curl -k doesn't work through proxy CONNECT tunnel
+                curl_cmd = [curl_path, '-L', '-k', '-o', tmp_path, zip_url]
+
                 result = subprocess.run(
-                    ['curl', '-L', '-o', tmp_path, zip_url],
+                    curl_cmd,
                     capture_output=True,
                     timeout=120
                 )
@@ -273,6 +280,45 @@ class MinerUClient:
                     return self._find_md_file(output_dir)
         except Exception as e:
             print(f"  Method 3 (curl) failed: {e}")
+
+        # Method 4: Try PowerShell (uses Windows Schannel)
+        if os.name == 'nt':
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                    tmp_path = tmp.name
+
+                ps_cmd = f'''
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+                try {{
+                    Invoke-WebRequest -Uri "{zip_url}" -OutFile "{tmp_path}" -UseBasicParsing
+                }} catch {{
+                    # Try with ServerCertificateValidationCallback
+                    add-type @"
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
+public class TrustAllCertsPolicy {{
+    public static void TrustAll() {{
+        ServicePointManager.ServerCertificateValidationCallback = (sender, cert, chain, errors) => true;
+    }}
+}}
+"@
+[TrustAllCertsPolicy]::TrustAll()
+                    Invoke-WebRequest -Uri "{zip_url}" -OutFile "{tmp_path}" -UseBasicParsing
+                }}
+                '''
+
+                result = subprocess.run(
+                    ['powershell', '-Command', ps_cmd],
+                    capture_output=True,
+                    timeout=120
+                )
+                if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+                    with zipfile.ZipFile(tmp_path, 'r') as zf:
+                        zf.extractall(output_dir)
+                    os.unlink(tmp_path)
+                    return self._find_md_file(output_dir)
+            except Exception as e:
+                print(f"  Method 4 (PowerShell) failed: {e}")
 
         raise RuntimeError(f"All download methods failed. Last error: {last_error}")
 
