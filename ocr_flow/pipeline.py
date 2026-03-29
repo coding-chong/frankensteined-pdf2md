@@ -260,7 +260,9 @@ class Pipeline:
                 if self.verbose:
                     print(f"[5/7] Converting to Markdown via MinerU API...")
 
-                mineru_client = MinerUClient(self.config)
+                # Use 'pipeline' model for translated PDFs to prioritize text layer extraction
+                # 'vlm' model may OCR background images instead of extracting text layers
+                mineru_client = MinerUClient(self.config, use_text_extraction=translate)
                 md_dir = intermediate_dir / "mineru_md"
                 md_dir.mkdir(exist_ok=True)
 
