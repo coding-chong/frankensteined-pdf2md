@@ -151,14 +151,14 @@ def check_babeldoc_available(config) -> bool:
             return False
         # Check for uv
         try:
-            subprocess.run(['uv', '--version'], capture_output=True, check=True)
+            subprocess.run(['uv', '--version'], capture_output=True, check=True, timeout=10)
             return True
-        except:
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
             return False
 
     # Check global install
     try:
-        subprocess.run(['babeldoc', '--version'], capture_output=True, check=True)
+        subprocess.run(['babeldoc', '--version'], capture_output=True, check=True, timeout=10)
         return True
-    except:
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return False

@@ -4,11 +4,14 @@
 
 import json
 import hashlib
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 import shutil
+
+logger = logging.getLogger('ocr_flow')
 
 
 @dataclass
@@ -67,8 +70,13 @@ class State:
         if not state_path.exists():
             return None
 
-        with open(state_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        try:
+            with open(state_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            # Corrupted state file - log warning and return None
+            logger.warning(f"Corrupted state file {state_path}: {e}. Starting fresh.")
+            return None
 
         # Convert step dicts to StepStatus objects
         steps = {}

@@ -56,7 +56,10 @@ def ocr_pdf(
             timeout=60
         )
 
-    result = response.json()
+    try:
+        result = response.json()
+    except json.JSONDecodeError:
+        raise RuntimeError(f"Upload failed: invalid JSON response (status {response.status_code})")
     if result.get('code') != 100:
         raise RuntimeError(f"Upload failed: {result.get('data')}")
 
@@ -75,7 +78,10 @@ def ocr_pdf(
             timeout=30
         )
 
-        result = response.json()
+        try:
+            result = response.json()
+        except json.JSONDecodeError:
+            raise RuntimeError(f"Poll failed: invalid JSON response")
         if result.get('is_done'):
             break
 
@@ -97,7 +103,10 @@ def ocr_pdf(
         timeout=30
     )
 
-    result = response.json()
+    try:
+        result = response.json()
+    except json.JSONDecodeError:
+        raise RuntimeError(f"Download request failed: invalid JSON response")
     if result.get('code') != 100:
         raise RuntimeError(f"Download request failed: {result.get('data')}")
 
@@ -108,6 +117,7 @@ def ocr_pdf(
         download_url = f"{url}{download_url}"
 
     response = requests.get(download_url, timeout=120)
+    response.raise_for_status()  # Verify download succeeded
 
     with open(output_path, 'wb') as f:
         f.write(response.content)
