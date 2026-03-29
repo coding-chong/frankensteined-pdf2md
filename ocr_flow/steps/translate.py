@@ -48,7 +48,7 @@ def translate_pdf(
         '--lang-in', config.babeldoc.lang_in,
         '--lang-out', config.babeldoc.lang_out,
         '--qps', str(config.babeldoc.qps),  # QPS limit for translation API
-        '--skip-scanned-detection',  # Skip SSIM check (UMI OCR already added text layer)
+        '--ocr-workaround',  # Add text fill background for translated text visibility
     ])
 
     # Skip font subsetting when compressing with Ghostscript
