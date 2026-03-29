@@ -23,16 +23,8 @@ class MinerUClient:
 
     BASE_URL = "https://mineru.net/api/v4"
 
-    def __init__(self, config, use_text_extraction: bool = False):
-        """Initialize client with config.
-
-        Args:
-            config: Config object with mineru settings
-            use_text_extraction: If True, use 'pipeline' model which prioritizes
-                text layer extraction. If False, use 'vlm' model which uses
-                visual language model. Use True for translated PDFs that have
-                background images but also text layers.
-        """
+    def __init__(self, config):
+        """Initialize client with config."""
         self.token = config.mineru.api_token
         if not self.token:
             raise ValueError("MinerU API token not configured")
@@ -42,12 +34,8 @@ class MinerUClient:
             "Authorization": f"Bearer {self.token}"
         }
 
-        # Model version selection:
-        # - 'vlm': Visual Language Model, good for scanned PDFs but may ignore
-        #   text layers when background images are present
-        # - 'pipeline': Traditional OCR pipeline, prioritizes text layer extraction
-        # Use 'pipeline' for translated PDFs to preserve CJK text from BabelDOC
-        self.model_version = "pipeline" if use_text_extraction else "vlm"
+        # Model version for complex layouts (recommended for chip manuals)
+        self.model_version = "vlm"
 
         # Polling settings
         self.poll_interval = 5  # seconds
