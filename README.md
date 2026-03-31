@@ -2,6 +2,18 @@
 
 将 PDF 文档（芯片手册、数据手册）转换为 AI 可读的 Markdown 格式的命令行工具。
 
+## 功能特性
+
+- **PDF 类型自动检测** - 智能识别文字版或扫描版 PDF
+- **OCR 支持** - 通过 UMI OCR 处理扫描文档
+- **PDF 翻译** - 使用 BabelDOC 翻译 PDF 为中文，支持 QPS 限制
+- **PDF 压缩** - 使用 Ghostscript 减小文件体积，可选压缩模式
+- **Markdown 转换** - 通过 MinerU API 提取结构化内容
+- **图片本地化** - 下载并本地化远程图片
+- **状态管理** - 支持中断后恢复/重试，非交互模式支持 `--recovery` 参数
+- **日志系统** - 自动记录处理过程，10MB 自动轮转
+- **批量处理** - 支持目录批量处理
+
 ## 安装
 
 ### 前置要求
@@ -59,6 +71,7 @@ openai = true
 openai_model = "qwen3.5-flash"
 openai_base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 openai_api_key = "sk-xxx"
+qps = 2  # 翻译 API QPS 限制（推荐最大值: 3）
 
 [umiocr]
 url = "http://127.0.0.1:1224"
@@ -74,11 +87,11 @@ quality = "ebook"
 ### 基本处理
 
 ```bash
-# 处理文字版 PDF
-ocr-flow process input.pdf -o output/ --non-interactive --pdf-type text --lang en --no-translate -v
+# 自动检测 PDF 类型（推荐）
+ocr-flow process input.pdf -o output/ --non-interactive --lang en --no-translate -v
 
-# 自动检测 PDF 类型
-ocr-flow process input.pdf -o output/ --non-interactive --pdf-type auto --lang en --no-translate -v
+# 明确指定文字版 PDF
+ocr-flow process input.pdf -o output/ --non-interactive --pdf-type text --lang en --no-translate -v
 ```
 
 ### 带翻译
@@ -109,6 +122,9 @@ ocr-flow process input.pdf -o output/ --non-interactive --pdf-type text --lang e
 ```bash
 # 处理扫描文档（需要 UMI OCR 服务运行中）
 ocr-flow process scanned.pdf -o output/ --non-interactive --pdf-type scanned --lang en --no-translate -v
+
+# 检查并自动启动 UMI OCR
+ocr-flow doctor --ocr --start-ocr
 ```
 
 ### 系统检查
@@ -134,7 +150,7 @@ ocr-flow doctor --ocr --start-ocr
 ocr-flow process ./documents/ -o output/ -v
 
 # 非交互模式批量处理
-ocr-flow process ./documents/ -o output/ --non-interactive --pdf-type text --lang en --no-translate -v
+ocr-flow process ./documents/ -o output/ --non-interactive --pdf-type auto --lang en --no-translate -v
 ```
 
 ### 恢复/重试
@@ -152,6 +168,22 @@ ocr-flow process ./documents/ -o output/ --non-interactive --pdf-type text --lan
    (3) 继续 + 重试
    (4) 重来
    (5) 取消
+```
+
+**非交互模式恢复选项：**
+
+```bash
+# 自动继续未完成的任务
+ocr-flow process input.pdf -o output/ --non-interactive --recovery continue -v
+
+# 只重试失败的任务
+ocr-flow process input.pdf -o output/ --non-interactive --recovery retry -v
+
+# 继续 + 重试失败
+ocr-flow process input.pdf -o output/ --non-interactive --recovery continue_retry -v
+
+# 重新开始
+ocr-flow process input.pdf -o output/ --non-interactive --recovery restart -v
 ```
 
 ## 处理流程
@@ -198,43 +230,34 @@ output/
         └── titles_guide.md      # 标题生成指南（给 Claude Code 使用）
 ```
 
-## 新增功能 (v0.1.0)
+## 更新日志
 
-### 日志系统
+### 最新更新
 
-处理日志自动保存到 `ocr-flow.log`，支持：
-- 10MB 自动轮转
-- 保留最近 3 个备份
+**新功能：**
+- 添加 `--compress` 选项控制翻译后 PDF 压缩行为
+- 添加 `--recovery` 参数支持非交互模式恢复/重试
+- 添加 BabelDOC 翻译 QPS 限制配置 (`qps` 参数)
+- PDF 类型检测默认改为 `auto` 自动检测
 
-### 文件大小对比
+**Bug 修复：**
+- 修复翻译后 PDF 中文乱码问题
+- 修复 MinerU CDN SSL 下载问题（支持多种下载方式）
+- 修复扫描版 PDF 翻译后文字不可见问题（自动传递 `--ocr-workaround` 给 BabelDOC）
+- 修复代理环境下下载问题
 
-处理时自动显示压缩效果：
+**改进：**
+- 改进错误处理和用户友好提示
+- 添加大文件 OCR 警告
+- 改进 CLI 输出，添加进度条
 
-```
-原始大小: 1.40 MB
-压缩后: 0.76 MB
-压缩率: 45.7%
-```
+### 早期功能
 
-### 标题生成指南
-
-处理完成后生成 `titles_guide.md`，指导 Claude Code 为每个 Markdown 文件生成标题。
-
-### Ctrl+C 安全退出
-
-按 Ctrl+C 可安全中断处理，进度会自动保存，下次运行可继续。
-
-## 功能特性
-
-- **PDF 类型检测** - 自动识别文字版或扫描版 PDF
-- **OCR 支持** - 通过 UMI OCR 处理扫描文档
-- **PDF 翻译** - 使用 BabelDOC 翻译 PDF 为中文
-- **PDF 压缩** - 使用 Ghostscript 减小文件体积
-- **Markdown 转换** - 通过 MinerU API 提取结构化内容
-- **图片本地化** - 下载并本地化远程图片
-- **状态管理** - 支持中断后恢复/重试
-- **日志系统** - 自动记录处理过程
-- **批量处理** - 支持目录批量处理
+**基础功能：**
+- 日志系统 - 10MB 自动轮转，保留最近 3 个备份
+- 文件大小对比 - 处理时自动显示压缩效果
+- 标题生成指南 - 处理完成后生成 `titles_guide.md`
+- Ctrl+C 安全退出 - 按键中断可保存进度
 
 ## 开发
 
@@ -242,12 +265,15 @@ output/
 
 ```bash
 pytest tests/ -v
+pytest tests/test_pipeline.py -v  # Run single test file
+pytest tests/test_mineru.py::test_upload -v  # Run single test
 ```
 
 ### 创建测试 PDF
 
 ```bash
 python create_stress_test_pdf.py
+python create_test_assets.py
 ```
 
 ## API Token 获取
@@ -263,6 +289,7 @@ python create_stress_test_pdf.py
 
 1. 安装 `pythonnet`: `uv pip install pythonnet`
 2. 工具会自动使用 .NET WebClient 作为备选方案
+3. 如果仍失败，工具会尝试使用 curl 作为最终备选
 
 ### 找不到 UMI OCR
 
@@ -277,6 +304,16 @@ cd BabelDOC
 uv venv
 uv pip install -e .
 ```
+
+### 翻译后中文显示乱码
+
+使用 `--compress` 选项：
+
+```bash
+ocr-flow process input.pdf -o output/ --translate --compress -v
+```
+
+此选项会禁用字体子集化以兼容 Ghostscript 压缩。
 
 ## 许可证
 
