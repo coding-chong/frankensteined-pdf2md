@@ -13,6 +13,7 @@ def ocr_pdf(
     input_path: Path,
     output_path: Path,
     config,
+    logger=None,
     timeout: int = 600,
 ) -> Path:
     """Process a scanned PDF with OCR using UMI OCR.
@@ -21,6 +22,7 @@ def ocr_pdf(
         input_path: Path to input PDF
         output_path: Path to save OCR'd PDF
         config: Config object with umiocr settings
+        logger: Logger instance for logging (optional)
         timeout: Maximum processing time in seconds
 
     Returns:
@@ -33,8 +35,14 @@ def ocr_pdf(
     # Check file size
     file_size_mb = input_path.stat().st_size / (1024 * 1024)
     if file_size_mb > 100:
-        print(f"  Warning: Large file ({file_size_mb:.1f}MB). OCR may take a long time.")
-    print(f"  File size: {file_size_mb:.1f}MB")
+        msg = f"Warning: Large file ({file_size_mb:.1f}MB). OCR may take a long time."
+        if logger:
+            logger.warning(msg)
+        print(f"  {msg}")
+    msg = f"File size: {file_size_mb:.1f}MB"
+    if logger:
+        logger.info(msg)
+    print(f"  {msg}")
 
     url = config.umiocr.url
     language = config.umiocr.language
@@ -64,7 +72,10 @@ def ocr_pdf(
         raise RuntimeError(f"Upload failed: {result.get('data')}")
 
     task_id = result['data']
-    print(f"  OCR task started: {task_id}")
+    msg = f"OCR task started: {task_id}"
+    if logger:
+        logger.info(msg)
+    print(f"  {msg}")
 
     # Step 2: Poll for completion
     start_time = time.time()
@@ -88,7 +99,10 @@ def ocr_pdf(
         state = result.get('state', 'unknown')
         processed = result.get('processed_count', 0)
         total = result.get('pages_count', '?')
-        print(f"  OCR progress: {processed}/{total} pages ({state})")
+        msg = f"OCR progress: {processed}/{total} pages ({state})"
+        if logger:
+            logger.info(msg)
+        print(f"  {msg}")
 
         time.sleep(3)
 
@@ -128,7 +142,10 @@ def ocr_pdf(
     except:
         pass
 
-    print(f"  OCR completed: {output_path}")
+    msg = f"OCR completed: {output_path}"
+    if logger:
+        logger.info(msg)
+    print(f"  {msg}")
     return output_path
 
 

@@ -162,6 +162,7 @@ def download_images(
     images_base_dir: Path,
     page_num: int,
     source_images_dir: Optional[Path] = None,
+    logger=None,
     max_workers: int = 3,
 ) -> Tuple[bool, List[str]]:
     """Download all images in a Markdown file.
@@ -171,6 +172,7 @@ def download_images(
         images_base_dir: Base directory for images (final/images)
         page_num: Page number (for subdirectory naming)
         source_images_dir: Source directory for local images (intermediate/mineru_md/part_XXX)
+        logger: Logger instance for logging (optional)
         max_workers: Maximum concurrent downloads
 
     Returns:
@@ -228,7 +230,10 @@ def download_images(
             url_mapping[url] = result
         else:
             failed_urls.append(url)
-            print(f"  Failed to download: {url[:50]}...")
+            msg = f"Failed to download: {url[:50]}..."
+            if logger:
+                logger.warning(msg)
+            print(f"  {msg}")
 
     # Replace URLs in content
     def replace_url(match):

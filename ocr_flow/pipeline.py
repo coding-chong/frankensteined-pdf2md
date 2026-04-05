@@ -186,11 +186,13 @@ class Pipeline:
             try:
                 # Step 1: OCR (optional, for scanned PDFs)
                 if pdf_type == "scanned":
+                    msg = "[1/7] OCR processing"
+                    self.logger.info(msg)
                     if self.verbose:
-                        print(f"[1/7] OCR processing: {input_pdf}")
+                        print(f"{msg}: {input_pdf}")
                     from .steps.ocr import ocr_pdf
                     ocr_output = intermediate_dir / "ocr_result.pdf"
-                    current_pdf = ocr_pdf(current_pdf, ocr_output, self.config)
+                    current_pdf = ocr_pdf(current_pdf, ocr_output, self.config, logger=self.logger)
                     self.state_manager.backup_file("ocr", current_pdf)
                     state.update_step("ocr", status="completed", output=str(current_pdf))
                     self.state_manager.save()
@@ -200,11 +202,13 @@ class Pipeline:
 
                 # Step 2: Translate (optional)
                 if translate:
+                    msg = "[2/7] Translating"
+                    self.logger.info(msg)
                     if self.verbose:
-                        print(f"[2/7] Translating: {current_pdf}")
+                        print(f"{msg}: {current_pdf}")
                     from .steps.translate import translate_pdf
                     translate_output = intermediate_dir / "translated.dual.pdf"
-                    current_pdf = translate_pdf(current_pdf, translate_output, self.config, skip_clean=compress)
+                    current_pdf = translate_pdf(current_pdf, translate_output, self.config, skip_clean=compress, logger=self.logger)
                     self.state_manager.backup_file("translate", current_pdf)
                     state.update_step("translate", status="completed", output=str(current_pdf))
                     self.state_manager.save()
@@ -213,8 +217,10 @@ class Pipeline:
                     self.state_manager.save()
 
                 # Step 3: Split
+                msg = "[3/7] Splitting PDF"
+                self.logger.info(f"{msg}: {current_pdf}")
                 if self.verbose:
-                    print(f"[3/7] Splitting PDF: {current_pdf}")
+                    print(f"{msg}: {current_pdf}")
                 pages_per_part = 2 if translate else 1
                 split_dir = intermediate_dir / "split"
                 split_files = split_pdf(current_pdf, split_dir, pages_per_part)
@@ -257,10 +263,12 @@ class Pipeline:
                     self._show_size_comparison(input_pdf, compressed_files)
 
                 # Step 5: MinerU API
+                msg = "[5/7] Converting to Markdown via MinerU API"
+                self.logger.info(msg)
                 if self.verbose:
-                    print(f"[5/7] Converting to Markdown via MinerU API...")
+                    print(msg)
 
-                mineru_client = MinerUClient(self.config)
+                mineru_client = MinerUClient(self.config, logger=self.logger)
                 md_dir = intermediate_dir / "mineru_md"
                 md_dir.mkdir(exist_ok=True)
 
@@ -270,8 +278,10 @@ class Pipeline:
 
                 for i, pdf_file in enumerate(compressed_files, 1):
                     try:
+                        msg = f"Processing part {i}/{len(compressed_files)}: {pdf_file.name}"
+                        self.logger.info(msg)
                         if self.verbose:
-                            print(f"  Processing part {i}/{len(compressed_files)}: {pdf_file.name}")
+                            print(f"  {msg}")
 
                         # Create subdirectory for this part
                         part_md_dir = md_dir / f"part_{i:03d}"
@@ -292,8 +302,10 @@ class Pipeline:
                 self.state_manager.save()
 
                 # Step 6: Format fix
+                msg = "[6/7] Fixing Markdown format"
+                self.logger.info(msg)
                 if self.verbose:
-                    print(f"[6/7] Fixing Markdown format...")
+                    print(msg)
 
                 format_completed = []
                 for i in completed:
@@ -308,8 +320,10 @@ class Pipeline:
                 self.state_manager.save()
 
                 # Step 7: Image download
+                msg = "[7/7] Downloading images"
+                self.logger.info(msg)
                 if self.verbose:
-                    print(f"[7/7] Downloading images...")
+                    print(msg)
 
                 images_dir = final_dir / "images"
                 images_dir.mkdir(exist_ok=True)
@@ -323,7 +337,7 @@ class Pipeline:
                         # Source images directory from MinerU output
                         source_images_dir = md_dir / f"part_{i:03d}"
                         success, failed_urls = download_images(
-                            md_file, images_dir, i, source_images_dir
+                            md_file, images_dir, i, source_images_dir, logger=self.logger
                         )
                         download_completed.append(i)
                         if failed_urls:

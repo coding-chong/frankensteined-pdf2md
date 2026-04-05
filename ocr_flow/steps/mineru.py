@@ -23,11 +23,13 @@ class MinerUClient:
 
     BASE_URL = "https://mineru.net/api/v4"
 
-    def __init__(self, config):
+    def __init__(self, config, logger=None):
         """Initialize client with config."""
         self.token = config.mineru.api_token
         if not self.token:
             raise ValueError("MinerU API token not configured")
+
+        self.logger = logger
 
         self.headers = {
             "Content-Type": "application/json",
@@ -41,6 +43,17 @@ class MinerUClient:
         self.poll_interval = 5  # seconds
         self.max_retries = 3
         self.retry_delay = 10  # seconds
+
+    def _log(self, msg: str, level: str = "info"):
+        """Log message to both logger and terminal."""
+        if self.logger:
+            if level == "info":
+                self.logger.info(msg)
+            elif level == "warning":
+                self.logger.warning(msg)
+            elif level == "error":
+                self.logger.error(msg)
+        print(f"  {msg}")
 
     def upload_and_convert(self, pdf_path: Path, output_dir: Path) -> Path:
         """Upload PDF and convert to Markdown.
@@ -139,7 +152,7 @@ class MinerUClient:
                 try:
                     result = response.json()
                 except json.JSONDecodeError:
-                    print(f"  Poll error: invalid JSON response, retrying...")
+                    self._log("Poll error: invalid JSON response, retrying...")
                     time.sleep(self.poll_interval)
                     continue
 
@@ -164,14 +177,14 @@ class MinerUClient:
                         progress = item.get("extract_progress", {})
                         extracted = progress.get("extracted_pages", 0)
                         total = progress.get("total_pages", "?")
-                        print(f"  Progress: {extracted}/{total} pages")
+                        self._log(f"Progress: {extracted}/{total} pages")
                         time.sleep(self.poll_interval)
 
                     else:
                         time.sleep(self.poll_interval)
 
             except requests.exceptions.RequestException as e:
-                print(f"  Poll error: {e}, retrying...")
+                self._log(f"Poll error: {e}, retrying...")
                 time.sleep(self.poll_interval)
 
     def _download_and_extract(self, zip_url: str, output_dir: Path) -> Path:
@@ -183,7 +196,7 @@ class MinerUClient:
         last_error = None
         tmp_path = None
 
-        print("  Downloading result...")
+        self._log("Downloading result...")
 
         # Method 1: Try .NET WebClient (works on Windows, bypasses antivirus SSL issues)
         if os.name == 'nt':
@@ -225,7 +238,7 @@ class MinerUClient:
                 last_error = e
                 if tmp_path and os.path.exists(tmp_path):
                     os.unlink(tmp_path)
-                print(f"  Method 1 (.NET WebClient) failed: {e}")
+                self._log(f"Method 1 (.NET WebClient) failed: {e}")
 
         # Method 2: Try requests with custom SSL
         # NOTE: Don't use proxy for MinerU CDN due to SSL certificate issues
@@ -266,7 +279,7 @@ class MinerUClient:
             last_error = e
             if tmp_path and os.path.exists(tmp_path):
                 os.unlink(tmp_path)
-            print(f"  Method 2 (requests) failed: {e}")
+            self._log(f"Method 2 (requests) failed: {e}")
 
         # Method 3: Try curl with -k flag (skip SSL verification)
         # NOTE: Don't use proxy for MinerU CDN due to SSL issues with CONNECT tunnel
@@ -275,7 +288,7 @@ class MinerUClient:
             import subprocess
             curl_path = shutil.which('curl')
             if curl_path:
-                print("  Trying Method 3 (curl -k)...")
+                self._log("Trying Method 3 (curl -k)...")
                 with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
                     tmp_path = tmp.name
 
@@ -301,14 +314,14 @@ class MinerUClient:
                     with zipfile.ZipFile(tmp_path, 'r') as zf:
                         zf.extractall(output_dir)
                     os.unlink(tmp_path)
-                    print("  Method 3 (curl) succeeded!")
+                    self._log("Method 3 (curl) succeeded!")
                     return self._find_md_file(output_dir)
                 else:
-                    print(f"  Method 3 (curl) failed: returncode={result.returncode}")
+                    self._log(f"Method 3 (curl) failed: returncode={result.returncode}")
             else:
-                print("  Method 3 (curl) skipped: curl not found")
+                self._log("Method 3 (curl) skipped: curl not found")
         except Exception as e:
-            print(f"  Method 3 (curl) failed: {e}")
+            self._log(f"Method 3 (curl) failed: {e}")
 
         # Method 4: Try PowerShell (uses Windows Schannel)
         if os.name == 'nt':
@@ -347,7 +360,7 @@ public class TrustAllCertsPolicy {{
                     os.unlink(tmp_path)
                     return self._find_md_file(output_dir)
             except Exception as e:
-                print(f"  Method 4 (PowerShell) failed: {e}")
+                self._log(f"Method 4 (PowerShell) failed: {e}")
 
         raise RuntimeError(f"All download methods failed. Last error: {last_error}")
 

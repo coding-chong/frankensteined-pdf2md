@@ -12,6 +12,7 @@ def translate_pdf(
     output_path: Path,
     config,
     skip_clean: bool = False,
+    logger=None,
     timeout: int = 3600,
 ) -> Path:
     """Translate a PDF using BabelDOC.
@@ -21,6 +22,7 @@ def translate_pdf(
         output_path: Path to save translated PDF (for reference, actual output is in output_dir)
         config: Config object with babeldoc settings
         skip_clean: Whether to skip font subsetting (use when compressing with Ghostscript)
+        logger: Logger instance for logging (optional)
         timeout: Maximum processing time in seconds
 
     Returns:
@@ -65,7 +67,10 @@ def translate_pdf(
             '--openai-api-key', config.babeldoc.openai_api_key,
         ])
 
-    print(f"  Running: {' '.join(cmd)}")
+    msg = f"Running: {' '.join(cmd)}"
+    if logger:
+        logger.info(msg)
+    print(f"  {msg}")
 
     # Run BabelDOC
     result = subprocess.run(
