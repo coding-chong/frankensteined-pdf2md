@@ -82,6 +82,108 @@ ghostscript_path = ""  # 留空则自动检测
 quality = "ebook"
 ```
 
+## 测试指南
+
+### 测试文件说明
+
+`test_assets/` 目录提供不同类型的测试 PDF：
+
+| 文件 | 大小 | 类型 | 用途 | 推荐场景 |
+|------|------|------|------|----------|
+| `true_text_test.pdf` | 490KB | 文字版，15页 | 完整流程测试 | ✅ **首选**，验证基本功能 |
+| `true_scanned_test.pdf` | 3.3MB | 扫描版，15页 | OCR测试 | 需 UMI OCR 运行 |
+| `test_page_text.pdf` | 1.3KB | 文字版，1页 | 快速验证 | 30秒内完成 |
+| `test_page_scanned.pdf` | 31KB | 扫描版，1页 | OCR快速验证 | 需 UMI OCR |
+| `stress_test_10pages.pdf` | 1.4MB | 文字版，10页 | 压力测试 | 大文件测试 |
+
+### 快速测试命令
+
+**文字版测试（推荐首选）：**
+
+```bash
+ocr-flow process test_assets/true_text_test.pdf -o test_output/ \
+  --non-interactive --pdf-type text --lang en --no-translate -v
+```
+
+预期结果：约2分钟完成，输出 `test_output/` 目录下 15 个 markdown 文件。
+
+**扫描版测试（需先启动 UMI OCR）：**
+
+```bash
+# 先检查/启动 OCR 服务
+ocr-flow doctor --ocr --start-ocr
+
+# 再运行扫描版测试
+ocr-flow process test_assets/true_scanned_test.pdf -o test_output/ \
+  --non-interactive --pdf-type scanned --lang en --no-translate -v
+```
+
+预期结果：约5-8分钟完成（取决于 OCR 速度）。
+
+**翻译测试：**
+
+```bash
+ocr-flow process test_assets/true_text_test.pdf -o test_output/ \
+  --non-interactive --pdf-type text --lang en --translate -v
+```
+
+注意：需先配置翻译 API（运行 `ocr-flow config`）。
+
+### 非交互模式必需参数
+
+使用 `--non-interactive` 时，以下参数**必须指定**：
+
+| 参数 | 说明 | 为什么必需 |
+|------|------|-----------|
+| `--lang` | 文档语言 (`en` 或 `zh`) | 交互模式会询问，非交互模式必须预设 |
+| `--translate` 或 `--no-translate` | 翻译选项 | 必须明确是否翻译，不能默认 |
+
+### 常见错误及修正
+
+**错误示例 1：缺少 `--lang`**
+
+```bash
+# ❌ 错误命令
+ocr-flow process test_assets/true_text_test.pdf --non-interactive --no-translate
+
+# 报错信息
+--lang is required in non-interactive mode
+
+# ✅ 修正：添加 --lang en
+ocr-flow process test_assets/true_text_test.pdf -o test_output/ \
+  --non-interactive --lang en --no-translate -v
+```
+
+**错误示例 2：缺少翻译选项**
+
+```bash
+# ❌ 错误命令
+ocr-flow process test_assets/true_text_test.pdf --non-interactive --lang en
+
+# 报错信息
+--translate or --no-translate is required in non-interactive mode
+
+# ✅ 修正：添加 --no-translate 或 --translate
+ocr-flow process test_assets/true_text_test.pdf -o test_output/ \
+  --non-interactive --lang en --no-translate -v
+```
+
+**错误示例 3：交互模式 vs 非交互模式混淆**
+
+| 模式 | 命令 | 行为 |
+|------|------|------|
+| **交互模式** | 不加 `--non-interactive` | 程序逐个询问缺失参数 |
+| **非交互模式** | 加 `--non-interactive` | 必须提供所有必需参数，否则报错 |
+
+```bash
+# 交互模式：程序会问你 PDF 类型、语言、是否翻译
+ocr-flow process test_assets/true_text_test.pdf -o test_output/ -v
+
+# 非交互模式：所有参数必须预设，不会询问
+ocr-flow process test_assets/true_text_test.pdf -o test_output/ \
+  --non-interactive --pdf-type text --lang en --no-translate -v
+```
+
 ## 使用方法
 
 ### 基本处理
