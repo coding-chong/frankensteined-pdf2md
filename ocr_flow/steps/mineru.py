@@ -190,15 +190,95 @@ class MinerUClient:
     def _download_and_extract(self, zip_url: str, output_dir: Path) -> Path:
         """Download and extract the result ZIP.
 
-        Uses .NET WebClient on Windows (bypasses SSL issues with some antivirus software).
-        Falls back to other methods if .NET is not available.
+        Tries multiple download methods in order of reliability.
         """
         last_error = None
         tmp_path = None
 
         self._log("Downloading result...")
 
-        # Method 1: Try .NET WebClient (works on Windows, bypasses antivirus SSL issues)
+        # Method 1: Try requests with custom SSL (most reliable)
+        # NOTE: Don't use proxy for MinerU CDN due to SSL certificate issues
+        try:
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.ssl_ import create_urllib3_context
+
+            class SSLAdapter(HTTPAdapter):
+                def init_poolmanager(self, *args, **kwargs):
+                    ctx = create_urllib3_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+                    ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT
+                    ctx.minimum_version = ssl.TLSVersion.TLSv1
+                    ctx.maximum_version = ssl.TLSVersion.MAXIMUM_SUPPORTED
+                    kwargs['ssl_context'] = ctx
+                    return super().init_poolmanager(*args, **kwargs)
+
+            session = requests.Session()
+            session.mount('https://', SSLAdapter())
+            # Don't use proxy for MinerU CDN (SSL issues with proxy CONNECT tunnel)
+            session.trust_env = False  # Disable environment-based proxy settings
+
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                tmp_path = tmp.name
+                response = session.get(zip_url, timeout=120, verify=False, stream=True)
+                response.raise_for_status()
+                for chunk in response.iter_content(chunk_size=8192):
+                    tmp.write(chunk)
+
+            with zipfile.ZipFile(tmp_path, 'r') as zf:
+                zf.extractall(output_dir)
+
+            os.unlink(tmp_path)
+            return self._find_md_file(output_dir)
+
+        except Exception as e:
+            last_error = e
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            self._log(f"Method 1 (requests) failed: {e}")
+
+        # Method 2: Try curl with -k flag (skip SSL verification)
+        # NOTE: Don't use proxy for MinerU CDN due to SSL issues with CONNECT tunnel
+        try:
+            import shutil
+            import subprocess
+            curl_path = shutil.which('curl')
+            if curl_path:
+                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                    tmp_path = tmp.name
+
+                # Don't use proxy - curl -k doesn't work through proxy CONNECT tunnel
+                # Create a clean environment without proxy settings
+                env = os.environ.copy()
+                env.pop('http_proxy', None)
+                env.pop('https_proxy', None)
+                env.pop('all_proxy', None)
+                env.pop('HTTP_PROXY', None)
+                env.pop('HTTPS_PROXY', None)
+                env.pop('ALL_PROXY', None)
+
+                curl_cmd = [curl_path, '-L', '-k', '-o', tmp_path, zip_url]
+
+                result = subprocess.run(
+                    curl_cmd,
+                    capture_output=True,
+                    timeout=120,
+                    env=env  # Use clean environment without proxy
+                )
+                if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+                    with zipfile.ZipFile(tmp_path, 'r') as zf:
+                        zf.extractall(output_dir)
+                    os.unlink(tmp_path)
+                    return self._find_md_file(output_dir)
+                else:
+                    self._log(f"Method 2 (curl) failed: returncode={result.returncode}")
+            else:
+                self._log("Method 2 (curl) skipped: curl not found")
+        except Exception as e:
+            self._log(f"Method 2 (curl) failed: {e}")
+
+        # Method 3: Try .NET WebClient (Windows only, may have SSL issues)
         if os.name == 'nt':
             try:
                 import clr
@@ -238,90 +318,7 @@ class MinerUClient:
                 last_error = e
                 if tmp_path and os.path.exists(tmp_path):
                     os.unlink(tmp_path)
-                self._log(f"Method 1 (.NET WebClient) failed: {e}")
-
-        # Method 2: Try requests with custom SSL
-        # NOTE: Don't use proxy for MinerU CDN due to SSL certificate issues
-        try:
-            from requests.adapters import HTTPAdapter
-            from urllib3.util.ssl_ import create_urllib3_context
-
-            class SSLAdapter(HTTPAdapter):
-                def init_poolmanager(self, *args, **kwargs):
-                    ctx = create_urllib3_context()
-                    ctx.check_hostname = False
-                    ctx.verify_mode = ssl.CERT_NONE
-                    ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT
-                    ctx.minimum_version = ssl.TLSVersion.TLSv1
-                    ctx.maximum_version = ssl.TLSVersion.MAXIMUM_SUPPORTED
-                    kwargs['ssl_context'] = ctx
-                    return super().init_poolmanager(*args, **kwargs)
-
-            session = requests.Session()
-            session.mount('https://', SSLAdapter())
-            # Don't use proxy for MinerU CDN (SSL issues with proxy CONNECT tunnel)
-            session.trust_env = False  # Disable environment-based proxy settings
-
-            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-                tmp_path = tmp.name
-                response = session.get(zip_url, timeout=120, verify=False, stream=True)
-                response.raise_for_status()
-                for chunk in response.iter_content(chunk_size=8192):
-                    tmp.write(chunk)
-
-            with zipfile.ZipFile(tmp_path, 'r') as zf:
-                zf.extractall(output_dir)
-
-            os.unlink(tmp_path)
-            return self._find_md_file(output_dir)
-
-        except Exception as e:
-            last_error = e
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-            self._log(f"Method 2 (requests) failed: {e}")
-
-        # Method 3: Try curl with -k flag (skip SSL verification)
-        # NOTE: Don't use proxy for MinerU CDN due to SSL issues with CONNECT tunnel
-        try:
-            import shutil
-            import subprocess
-            curl_path = shutil.which('curl')
-            if curl_path:
-                self._log("Trying Method 3 (curl -k)...")
-                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-                    tmp_path = tmp.name
-
-                # Don't use proxy - curl -k doesn't work through proxy CONNECT tunnel
-                # Create a clean environment without proxy settings
-                env = os.environ.copy()
-                env.pop('http_proxy', None)
-                env.pop('https_proxy', None)
-                env.pop('all_proxy', None)
-                env.pop('HTTP_PROXY', None)
-                env.pop('HTTPS_PROXY', None)
-                env.pop('ALL_PROXY', None)
-
-                curl_cmd = [curl_path, '-L', '-k', '-o', tmp_path, zip_url]
-
-                result = subprocess.run(
-                    curl_cmd,
-                    capture_output=True,
-                    timeout=120,
-                    env=env  # Use clean environment without proxy
-                )
-                if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
-                    with zipfile.ZipFile(tmp_path, 'r') as zf:
-                        zf.extractall(output_dir)
-                    os.unlink(tmp_path)
-                    self._log("Method 3 (curl) succeeded!")
-                    return self._find_md_file(output_dir)
-                else:
-                    self._log(f"Method 3 (curl) failed: returncode={result.returncode}")
-            else:
-                self._log("Method 3 (curl) skipped: curl not found")
-        except Exception as e:
-            self._log(f"Method 3 (curl) failed: {e}")
+                self._log(f"Method 3 (.NET WebClient) failed: {e}")
 
         # Method 4: Try PowerShell (uses Windows Schannel)
         if os.name == 'nt':
