@@ -208,7 +208,7 @@ class Pipeline:
                         print(f"{msg}: {current_pdf}")
                     from .steps.translate import translate_pdf
                     translate_output = intermediate_dir / "translated.dual.pdf"
-                    current_pdf = translate_pdf(current_pdf, translate_output, self.config, skip_clean=compress, logger=self.logger)
+                    current_pdf = translate_pdf(current_pdf, translate_output, self.config, skip_clean=compress, ocr_workaround=(pdf_type == "scanned"), logger=self.logger)
                     self.state_manager.backup_file("translate", current_pdf)
                     state.update_step("translate", status="completed", output=str(current_pdf))
                     self.state_manager.save()

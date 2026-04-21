@@ -12,6 +12,7 @@ def translate_pdf(
     output_path: Path,
     config,
     skip_clean: bool = False,
+    ocr_workaround: bool = False,
     logger=None,
     timeout: int = 3600,
 ) -> Path:
@@ -49,9 +50,11 @@ def translate_pdf(
         '--watermark-output-mode=no_watermark',
         '--lang-in', config.babeldoc.lang_in,
         '--lang-out', config.babeldoc.lang_out,
-        '--qps', str(config.babeldoc.qps),  # QPS limit for translation API
-        '--ocr-workaround',  # Add text fill background for translated text visibility
+        '--qps', str(config.babeldoc.qps),
     ])
+
+    if ocr_workaround:
+        cmd.append('--ocr-workaround')
 
     # Skip font subsetting when compressing with Ghostscript
     # This preserves CJK font encoding to avoid garbled text after compression
