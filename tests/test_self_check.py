@@ -167,6 +167,7 @@ class TestCheckGhostscript:
 
         assert result['ok'] == False
         assert 'Not found' in result['message']
+        assert result['next_step'] == 'Install Ghostscript from https://ghostscript.com/'
 
 
 # =============================================================================
@@ -272,6 +273,25 @@ class TestCheckUmiOcr:
         result = checker.check_umi_ocr(auto_start=True)
 
         mock_start.assert_called_once()
+
+    @patch('ocr_flow.self_check.start_umi_ocr')
+    @patch('ocr_flow.self_check.requests.get')
+    def test_check_umi_ocr_auto_start_not_installed(self, mock_get, mock_start, mock_config):
+        """Test auto-starting UMI OCR when the app is not installed."""
+        import requests
+
+        mock_get.side_effect = requests.exceptions.ConnectionError()
+        mock_start.return_value = {
+            'started': False,
+            'message': 'UMI OCR not found. Download from https://github.com/hiroi-sora/Umi-OCR/releases',
+        }
+
+        checker = SelfCheck(config=mock_config)
+        result = checker.check_umi_ocr(auto_start=True)
+
+        assert result['ok'] == False
+        assert 'UMI OCR not found' in result['message']
+        assert result['next_step'] == 'Install UMI OCR from https://github.com/hiroi-sora/Umi-OCR/releases'
 
 
 # =============================================================================

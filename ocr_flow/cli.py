@@ -13,6 +13,74 @@ from . import __version__
 
 console = Console()
 
+INTERACTIVE_COMMAND = "ocr-flow process <input.pdf> -o <output_dir> -v"
+TEXT_NO_TRANSLATE_COMMAND = (
+    "ocr-flow process <input.pdf> -o <output_dir> "
+    "--non-interactive --pdf-type text --lang en --no-translate -v"
+)
+TEXT_TRANSLATE_COMMAND = (
+    "ocr-flow process <input.pdf> -o <output_dir> "
+    "--non-interactive --pdf-type text --lang en --translate -v"
+)
+SCANNED_NO_TRANSLATE_COMMAND = (
+    "ocr-flow process <input.pdf> -o <output_dir> "
+    "--non-interactive --pdf-type scanned --lang en --no-translate -v"
+)
+SCANNED_TRANSLATE_COMMAND = (
+    "ocr-flow process <input.pdf> -o <output_dir> "
+    "--non-interactive --pdf-type scanned --lang en --translate -v"
+)
+
+
+def format_command_examples(commands: list[str]) -> str:
+    """Format one or more copyable command examples."""
+    label = "Example:" if len(commands) == 1 else "Examples:"
+    return f"{label}\n" + "\n".join(f"  {command}" for command in commands)
+
+
+def raise_usage_with_examples(message: str, commands: list[str]) -> None:
+    """Raise a Click usage error with copyable command examples."""
+    raise click.UsageError(f"{message}\n\n{format_command_examples(commands)}")
+
+
+def doctor_success_commands(needs_translate: bool, needs_ocr: bool) -> list[str]:
+    """Return the minimal verified commands for the current doctor scope."""
+    if needs_ocr and needs_translate:
+        return [SCANNED_TRANSLATE_COMMAND]
+    if needs_ocr:
+        return [SCANNED_NO_TRANSLATE_COMMAND]
+    if needs_translate:
+        return [TEXT_TRANSLATE_COMMAND]
+    return [TEXT_NO_TRANSLATE_COMMAND]
+
+
+def print_doctor_follow_up(results: Dict[str, Dict[str, Any]], needs_translate: bool, needs_ocr: bool) -> None:
+    """Render next-step guidance after the doctor status table."""
+    has_failures = any(not result.get('ok') for result in results.values())
+    next_steps = []
+    for result in results.values():
+        if result.get('ok'):
+            continue
+        next_step = result.get('next_step')
+        if next_step and next_step not in next_steps:
+            next_steps.append(next_step)
+
+    click.echo("")
+    if next_steps:
+        click.echo("Next step:")
+        for step in next_steps:
+            click.echo(f"  {step}")
+        return
+
+    if has_failures:
+        click.echo("Next step:")
+        click.echo("  Resolve the failed checks above before running ocr-flow process.")
+        return
+
+    click.echo("Next step command:")
+    for command in doctor_success_commands(needs_translate=needs_translate, needs_ocr=needs_ocr):
+        click.echo(f"  {command}")
+
 
 def detect_unfinished_task(work_dir: Path) -> Optional[Dict[str, Any]]:
     """Detect unfinished task in output directory.
@@ -138,17 +206,20 @@ def interactive_ask(is_batch: bool = False) -> dict:
 
         # PDF type
         click.echo("  PDF 类型:")
-        click.echo("  (1) 全部文字版")
-        click.echo("  (2) 全部扫描版")
-        click.echo("  (3) 逐个询问")
-        pdf_choice = click.prompt("  选择", type=click.INT, default=1)
+        click.echo("  (1) 全部文字版 - PDF 已有文字层，通常不需要 OCR")
+        click.echo("  (2) 全部扫描版 - PDF 是扫描件，需要 UMI OCR")
+        click.echo("  (3) 全部自动检测 - 不确定时推荐")
+        click.echo("  (4) 逐个询问")
+        pdf_choice = click.prompt("  选择", type=click.IntRange(1, 3), default=3)
 
         if pdf_choice == 1:
             options['pdf_type'] = 'text'
         elif pdf_choice == 2:
             options['pdf_type'] = 'scanned'
+        elif pdf_choice == 3:
+            options['pdf_type'] = 'auto'
         else:
-            options['pdf_type'] = 'ask_each'  # Will ask per file
+            options['pdf_type'] = 'ask_each'
 
         # Document language
         click.echo("\n  文档语言:")
@@ -166,8 +237,8 @@ def interactive_ask(is_batch: bool = False) -> dict:
 
         # Translate
         click.echo("\n  是否翻译:")
-        click.echo("  (1) 全部翻译成中文")
-        click.echo("  (2) 全部不翻译")
+        click.echo("  (1) 全部翻译成中文 - 先生成双语 PDF，再继续生成 Markdown")
+        click.echo("  (2) 全部不翻译 - 直接进入 Markdown 流程")
         click.echo("  (3) 逐个询问")
         trans_choice = click.prompt("  选择", type=click.INT, default=2)
 
@@ -184,10 +255,14 @@ def interactive_ask(is_batch: bool = False) -> dict:
 
         # PDF type
         click.echo("  PDF 类型:")
-        click.echo("  (1) 文字版")
-        click.echo("  (2) 扫描版")
-        pdf_choice = click.prompt("  选择", type=click.INT, default=1)
-        options['pdf_type'] = 'text' if pdf_choice == 1 else 'scanned'
+        click.echo("  (1) 文字版 - PDF 已有文字层，通常不需要 OCR")
+        click.echo("  (2) 扫描版 - PDF 是图片扫描件，需要 UMI OCR")
+        click.echo("  (3) 自动检测 - 不确定时推荐")
+        pdf_choice = click.prompt("  选择", type=click.IntRange(1, 3), default=3)
+        options['pdf_type'] = {1: 'text', 2: 'scanned', 3: 'auto'}[pdf_choice]
+
+        if options['pdf_type'] == 'scanned':
+            click.echo("  提示: 扫描版需要 UMI OCR，可先运行 ocr-flow doctor --ocr --start-ocr")
 
         # Document language
         click.echo("\n  文档语言:")
@@ -202,8 +277,8 @@ def interactive_ask(is_batch: bool = False) -> dict:
             click.echo("\n  文档为中文，跳过翻译")
         else:
             click.echo("\n  是否翻译:")
-            click.echo("  (1) 是，翻译成中文")
-            click.echo("  (2) 否，保持原文")
+            click.echo("  (1) 是 - 先生成双语 PDF，再继续生成 Markdown")
+            click.echo("  (2) 否 - 直接进入 Markdown 流程")
             trans_choice = click.prompt("  选择", type=click.INT, default=1)
             options['translate'] = (trans_choice == 1)
 
@@ -235,10 +310,23 @@ def cli():
 @click.option('-o', '--output', type=click.Path(), help='Output directory')
 @click.option('--config', type=click.Path(), help='Config file path')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-@click.option('--non-interactive', is_flag=True, help='Non-interactive mode')
-@click.option('--pdf-type', type=click.Choice(['text', 'scanned', 'auto']), default='auto', help='PDF type: text, scanned, or auto-detect (default: auto)')
-@click.option('--lang', type=click.Choice(['en', 'zh']), help='Document language (non-interactive mode)')
-@click.option('--translate/--no-translate', default=None, help='Translate to Chinese (non-interactive mode)')
+@click.option(
+    '--non-interactive',
+    is_flag=True,
+    help='Non-interactive mode. Requires --lang and either --translate or --no-translate.'
+)
+@click.option(
+    '--pdf-type',
+    type=click.Choice(['text', 'scanned', 'auto']),
+    default='auto',
+    help='PDF type: text, scanned, or auto-detect (default: auto)'
+)
+@click.option('--lang', type=click.Choice(['en', 'zh']), help='Document language. Required in non-interactive mode.')
+@click.option(
+    '--translate/--no-translate',
+    default=None,
+    help='Translation mode. Required in non-interactive mode: choose --translate or --no-translate.'
+)
 @click.option('--compress', is_flag=True, help='Compress translated PDFs (disables font subsetting to preserve CJK encoding)')
 @click.option('--recovery', type=click.Choice(['continue', 'retry', 'continue_retry', 'restart']), default=None, help='Recovery mode for non-interactive mode: continue, retry, continue_retry, restart')
 def process(input_path: str, output: str, config: str, verbose: bool,
@@ -246,6 +334,16 @@ def process(input_path: str, output: str, config: str, verbose: bool,
     """Process PDF file(s) to Markdown.
 
     INPUT_PATH: PDF file or directory containing PDF files
+
+    Non-interactive mode requires:
+      --lang
+      --translate or --no-translate
+
+    \b
+    Common examples:
+      ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --translate -v
+      ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanned --lang en --no-translate -v
+      ocr-flow process <input.pdf> -o <output_dir> -v
     """
     import shutil
     from datetime import datetime
@@ -258,6 +356,12 @@ def process(input_path: str, output: str, config: str, verbose: bool,
     # S2.3: Check for first-time config
     config_path = Config.get_config_path()
     if not config_path.exists():
+        if non_interactive:
+            raise click.UsageError(
+                "configuration file not found for non-interactive mode.\n\n"
+                "Next step:\n"
+                "  ocr-flow config"
+            )
         console.print("\n[bold yellow]⚠️ 未检测到配置文件，开始配置向导...[/bold yellow]\n")
         Config.configure_interactive()
 
@@ -358,11 +462,15 @@ def process(input_path: str, output: str, config: str, verbose: bool,
 
     # Non-interactive mode: use provided options
     if not lang and not ask_each_lang:
-        click.echo("--lang is required in non-interactive mode")
-        return
+        raise_usage_with_examples(
+            "--lang is required in non-interactive mode.",
+            [TEXT_NO_TRANSLATE_COMMAND],
+        )
     if translate is None and not ask_each_translate:
-        click.echo("--translate or --no-translate is required in non-interactive mode")
-        return
+        raise_usage_with_examples(
+            "--translate or --no-translate is required in non-interactive mode.",
+            [TEXT_TRANSLATE_COMMAND, TEXT_NO_TRANSLATE_COMMAND],
+        )
 
     # Run pipeline with progress bar
     pipeline = Pipeline(cfg, verbose=verbose)
@@ -393,9 +501,14 @@ def process(input_path: str, output: str, config: str, verbose: bool,
                 console.print(f"\n[bold][*] {pdf_file.name}[/bold]")
 
                 if ask_each_pdf_type:
-                    click.echo("  PDF 类型: (1) 文字版  (2) 扫描版")
-                    choice = click.prompt("  选择", type=click.INT, default=1)
-                    file_pdf_type = 'text' if choice == 1 else 'scanned'
+                    click.echo("  PDF 类型:")
+                    click.echo("  (1) 文字版 - PDF 已有文字层，通常不需要 OCR")
+                    click.echo("  (2) 扫描版 - PDF 是扫描件，需要 UMI OCR")
+                    click.echo("  (3) 自动检测 - 不确定时推荐")
+                    choice = click.prompt("  选择", type=click.IntRange(1, 3), default=3)
+                    file_pdf_type = {1: 'text', 2: 'scanned', 3: 'auto'}[choice]
+                    if file_pdf_type == 'scanned':
+                        click.echo("  提示: 扫描版需要 UMI OCR，可先运行 ocr-flow doctor --ocr --start-ocr")
 
                 if ask_each_lang:
                     click.echo("  文档语言: (1) 英文  (2) 中文")
@@ -406,7 +519,9 @@ def process(input_path: str, output: str, config: str, verbose: bool,
                     if file_lang == 'zh':
                         file_translate = False
                     else:
-                        click.echo("  是否翻译: (1) 是  (2) 否")
+                        click.echo("  是否翻译:")
+                        click.echo("  (1) 是 - 先生成双语 PDF，再继续生成 Markdown")
+                        click.echo("  (2) 否 - 直接进入 Markdown 流程")
                         choice = click.prompt("  选择", type=click.INT, default=1)
                         file_translate = (choice == 1)
 
@@ -515,9 +630,9 @@ def doctor(fix: bool, translate: bool, ocr: bool, start_ocr: bool):
     if all_passed:
         click.echo("All checks passed!")
     else:
-        click.echo("Some checks failed. Run 'ocr-flow config' to configure.")
-        if ocr and 'umi_ocr' in results and not results['umi_ocr']['ok']:
-            click.echo("Tip: Use --start-ocr to auto-start UMI OCR service.")
+        click.echo("Some checks failed.")
+
+    print_doctor_follow_up(results, needs_translate=translate, needs_ocr=ocr)
 
 
 if __name__ == '__main__':

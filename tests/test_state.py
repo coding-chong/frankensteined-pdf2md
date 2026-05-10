@@ -561,10 +561,12 @@ class TestStateSerialization:
         assert "created_at" in data
         assert "updated_at" in data
 
-    def test_state_load_invalid_json(self, temp_dir, corrupted_state_file):
-        """Test loading invalid JSON."""
-        with pytest.raises(Exception):
-            State.load(corrupted_state_file)
+    def test_state_load_invalid_json(self, temp_dir, corrupted_state_file, caplog):
+        """Test loading invalid JSON returns None and logs warning."""
+        result = State.load(corrupted_state_file)
+
+        assert result is None
+        assert any('Corrupted state file' in record.message for record in caplog.records)
 
     def test_state_roundtrip_preserves_data(self, test_pdf, temp_dir):
         """Test that save/load preserves all data."""

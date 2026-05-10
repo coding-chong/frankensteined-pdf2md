@@ -9,6 +9,7 @@ Test suite covering:
 - CLI commands (process, config, doctor)
 """
 
+import click
 import pytest
 from pathlib import Path
 import tempfile
@@ -263,7 +264,7 @@ class TestInteractiveAsk:
 
     def test_interactive_ask_each_pdf_type(self, monkeypatch):
         """Test ask_each for PDF type."""
-        inputs = iter([3, 1, 2, 'Y'])  # ask_each, en, no translate
+        inputs = iter([4, 1, 2, 'Y'])  # ask_each, en, no translate
 
         def mock_prompt(*args, **kwargs):
             try:
@@ -277,6 +278,71 @@ class TestInteractiveAsk:
         result = interactive_ask(is_batch=True)
 
         assert result['pdf_type'] == 'ask_each'
+
+    def test_interactive_single_file_supports_auto_choice(self, monkeypatch):
+        """Test single-file interactive mode supports auto detection."""
+        inputs = iter([3, 1, 1, 'Y'])
+        echoed = []
+
+        def mock_prompt(*args, **kwargs):
+            try:
+                return next(inputs)
+            except StopIteration:
+                return 'Y'
+
+        monkeypatch.setattr('click.prompt', mock_prompt)
+        monkeypatch.setattr('click.echo', lambda message='', **kwargs: echoed.append(message))
+
+        result = interactive_ask(is_batch=False)
+
+        assert result is not None
+        assert result['pdf_type'] == 'auto'
+        assert any('自动检测' in line for line in echoed)
+
+    def test_interactive_scanned_prompt_mentions_umi_ocr(self, monkeypatch):
+        """Test scanned prompt mentions UMI OCR guidance."""
+        inputs = iter([2, 1, 2, 'Y'])
+        echoed = []
+
+        def mock_prompt(*args, **kwargs):
+            try:
+                return next(inputs)
+            except StopIteration:
+                return 'Y'
+
+        monkeypatch.setattr('click.prompt', mock_prompt)
+        monkeypatch.setattr('click.echo', lambda message='', **kwargs: echoed.append(message))
+
+        result = interactive_ask(is_batch=False)
+
+        assert result is not None
+        assert result['pdf_type'] == 'scanned'
+        assert any('UMI OCR' in line for line in echoed)
+        assert any('双语 PDF' in line for line in echoed)
+
+    def test_interactive_single_file_invalid_pdf_choice_reprompts(self, monkeypatch):
+        """Test invalid single-file PDF type choice does not crash."""
+        prompts = iter([4, 3, 1, 1, 'Y'])
+        echoed = []
+
+        def mock_prompt(*args, **kwargs):
+            prompt_type = kwargs.get('type')
+            while True:
+                value = next(prompts)
+                if isinstance(prompt_type, click.IntRange):
+                    try:
+                        return prompt_type.convert(value, None, None)
+                    except click.BadParameter:
+                        continue
+                return value
+
+        monkeypatch.setattr('click.prompt', mock_prompt)
+        monkeypatch.setattr('click.echo', lambda message='', **kwargs: echoed.append(message))
+
+        result = interactive_ask(is_batch=False)
+
+        assert result is not None
+        assert result['pdf_type'] == 'auto'
 
     def test_interactive_chinese_skips_translate(self, monkeypatch):
         """Test that Chinese documents skip translation prompt."""
@@ -317,7 +383,12 @@ class TestCliCommands:
         result = runner.invoke(cli, ['process', '--help'])
 
         assert result.exit_code == 0
-        assert 'PDF' in result.output
+        assert 'Non-interactive mode requires:' in result.output
+        assert '--lang' in result.output
+        assert '--translate or --no-translate' in result.output
+        assert 'ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --translate -v' in result.output
+        assert 'ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanned --lang en --no-translate -v' in result.output
+        assert 'ocr-flow process <input.pdf> -o <output_dir> -v' in result.output
 
     def test_config_command(self, runner, mock_config, monkeypatch):
         """Test config command."""
@@ -350,6 +421,34 @@ class TestCliCommands:
 
         assert 'No PDF files' in result.output
 
+    def test_non_interactive_missing_config_does_not_launch_wizard(self, runner, test_pdf, monkeypatch):
+        """Test non-interactive mode does not launch config wizard on first run."""
+        from ocr_flow.config import Config
+
+        config_path = test_pdf.parent / '.ocr-flow' / 'missing.toml'
+        monkeypatch.setattr(Config, 'get_config_path', lambda: config_path)
+
+        configure_called = False
+
+        def fake_configure():
+            nonlocal configure_called
+            configure_called = True
+
+        monkeypatch.setattr(Config, 'configure_interactive', fake_configure)
+
+        result = runner.invoke(cli, [
+            'process', str(test_pdf),
+            '--non-interactive',
+            '--pdf-type', 'text',
+            '--lang', 'en',
+            '--no-translate',
+        ])
+
+        assert result.exit_code == 2
+        assert configure_called is False
+        assert 'Error: configuration file not found for non-interactive mode.' in result.output
+        assert 'ocr-flow config' in result.output
+
 
 # =============================================================================
 # TestProcessCommand - Process Command Tests
@@ -363,11 +462,13 @@ class TestProcessCommand:
         result = runner.invoke(cli, [
             'process', str(test_pdf),
             '--non-interactive',
-            '--pdf-type', 'text'
+            '--pdf-type', 'text',
         ])
 
-        # Should fail or complain about missing lang
-        assert result.exit_code != 0 or 'required' in result.output.lower()
+        assert result.exit_code == 2
+        assert 'Error: --lang is required in non-interactive mode.' in result.output
+        assert 'Example:' in result.output
+        assert 'ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --no-translate -v' in result.output
 
     def test_process_requires_translate_flag(self, runner, test_pdf, mock_config):
         """Test that translate flag is required in non-interactive mode."""
@@ -375,11 +476,14 @@ class TestProcessCommand:
             'process', str(test_pdf),
             '--non-interactive',
             '--pdf-type', 'text',
-            '--lang', 'en'
+            '--lang', 'en',
         ])
 
-        # Should fail or complain about translate flag
-        assert result.exit_code != 0 or 'translate' in result.output.lower()
+        assert result.exit_code == 2
+        assert 'Error: --translate or --no-translate is required in non-interactive mode.' in result.output
+        assert 'Examples:' in result.output
+        assert 'ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --translate -v' in result.output
+        assert 'ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --no-translate -v' in result.output
 
     @patch('ocr_flow.pipeline.Pipeline')
     def test_process_basic(self, mock_pipeline, runner, test_pdf, mock_config):
@@ -420,13 +524,19 @@ class TestDoctorCommand:
         result = runner.invoke(cli, ['doctor'])
 
         assert result.exit_code == 0
-        mock_checker.check_all.assert_called_once()
+        assert 'All checks passed!' in result.output
+        assert 'Next step command:' in result.output
+        assert 'ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --no-translate -v' in result.output
 
     @patch('ocr_flow.self_check.SelfCheck')
     def test_doctor_with_ocr(self, mock_check_class, runner, mock_config):
         """Test doctor with --ocr flag."""
         mock_checker = MagicMock()
-        mock_checker.check_umi_ocr.return_value = {'ok': False, 'message': 'Not running'}
+        mock_checker.check_umi_ocr.return_value = {
+            'ok': False,
+            'message': 'Service not running at http://127.0.0.1:1224. Start UMI OCR application.',
+            'next_step': 'ocr-flow doctor --ocr --start-ocr',
+        }
         mock_checker.check_ghostscript.return_value = {'ok': True, 'message': 'Found'}
         mock_checker.check_mineru_api.return_value = {'ok': True, 'message': 'OK'}
         mock_check_class.return_value = mock_checker
@@ -434,23 +544,52 @@ class TestDoctorCommand:
         result = runner.invoke(cli, ['doctor', '--ocr'])
 
         assert result.exit_code == 0
-        mock_checker.check_umi_ocr.assert_called_once()
+        assert 'Some checks failed.' in result.output
+        assert 'Next step:' in result.output
+        assert 'ocr-flow doctor --ocr --start-ocr' in result.output
 
     @patch('ocr_flow.self_check.SelfCheck')
     def test_doctor_with_translate(self, mock_check_class, runner, mock_config):
         """Test doctor with --translate flag."""
         mock_checker = MagicMock()
-        mock_checker.check_babeldoc.return_value = {'ok': False, 'message': 'Not found'}
         mock_checker.check_all.return_value = {
             'ghostscript': {'ok': True, 'message': 'Found'},
-            'mineru_api': {'ok': True, 'message': 'OK'},
-            'babeldoc': {'ok': False, 'message': 'Not found'},
+            'mineru_api': {
+                'ok': False,
+                'message': 'API token not configured',
+                'next_step': 'ocr-flow config',
+            },
+            'babeldoc': {
+                'ok': False,
+                'message': 'Not found. Install with: pip install BabelDOC or clone and use path config',
+                'next_step': 'ocr-flow config',
+            },
         }
         mock_check_class.return_value = mock_checker
 
         result = runner.invoke(cli, ['doctor', '--translate'])
 
         assert result.exit_code == 0
+        assert 'Some checks failed.' in result.output
+        assert 'Next step:' in result.output
+        assert 'ocr-flow config' in result.output
+
+    @patch('ocr_flow.self_check.SelfCheck')
+    def test_doctor_failed_check_without_next_step_does_not_suggest_process(self, mock_check_class, runner, mock_config):
+        """Test doctor does not suggest process command when a failing check lacks next_step."""
+        mock_checker = MagicMock()
+        mock_checker.check_all.return_value = {
+            'ghostscript': {'ok': False, 'message': 'Not found. Install from https://ghostscript.com/'},
+            'mineru_api': {'ok': True, 'message': 'Configured'},
+        }
+        mock_check_class.return_value = mock_checker
+
+        result = runner.invoke(cli, ['doctor'])
+
+        assert result.exit_code == 0
+        assert 'Some checks failed.' in result.output
+        assert 'Next step command:' not in result.output
+        assert 'ocr-flow process <input.pdf>' not in result.output
 
 
 # =============================================================================

@@ -65,13 +65,18 @@ class SelfCheck:
 
         return {
             'ok': False,
-            'message': 'Not found. Install from https://ghostscript.com/'
+            'message': 'Not found. Install from https://ghostscript.com/',
+            'next_step': 'Install Ghostscript from https://ghostscript.com/',
         }
 
     def check_mineru_api(self) -> Dict[str, Any]:
         """Check if MinerU API token is configured."""
         if not self.config or not self.config.mineru.api_token:
-            return {'ok': False, 'message': 'API token not configured'}
+            return {
+                'ok': False,
+                'message': 'API token not configured',
+                'next_step': 'ocr-flow config',
+            }
 
         # Only check if token exists, don't call API
         # The actual API call will happen during processing
@@ -79,7 +84,11 @@ class SelfCheck:
         if token and token != 'your-mineru-api-token-here':
             return {'ok': True, 'message': f'API token configured ({token[:10]}...)'}
 
-        return {'ok': False, 'message': 'API token not configured'}
+        return {
+            'ok': False,
+            'message': 'API token not configured',
+            'next_step': 'ocr-flow config',
+        }
 
     def check_umi_ocr(self, auto_start: bool = False) -> Dict[str, Any]:
         """Check if UMI OCR service is running.
@@ -121,14 +130,23 @@ class SelfCheck:
                             pass
                     return {
                         'ok': False,
-                        'message': f'Service started but not responding at {url}'
+                        'message': f'Service started but not responding at {url}',
+                        'next_step': 'ocr-flow doctor --ocr --start-ocr',
                     }
                 else:
+                    next_step = 'ocr-flow doctor --ocr --start-ocr'
+                    if 'UMI OCR not found' in result['message']:
+                        next_step = 'Install UMI OCR from https://github.com/hiroi-sora/Umi-OCR/releases'
                     return {
                         'ok': False,
-                        'message': f"Service not running. {result['message']}"
+                        'message': f"Service not running. {result['message']}",
+                        'next_step': next_step,
                     }
-            return {'ok': False, 'message': f'Service not running at {url}. Start UMI OCR application.'}
+            return {
+                'ok': False,
+                'message': f'Service not running at {url}. Start UMI OCR application.',
+                'next_step': 'ocr-flow doctor --ocr --start-ocr',
+            }
         except requests.exceptions.RequestException as e:
             return {'ok': False, 'message': f'Check failed: {e}'}
 
@@ -140,7 +158,11 @@ class SelfCheck:
             if babel_path.exists():
                 return {'ok': True, 'message': f'Found at {babel_path}'}
             else:
-                return {'ok': False, 'message': f'Path not found: {babel_path}'}
+                return {
+                    'ok': False,
+                    'message': f'Path not found: {babel_path}',
+                    'next_step': 'ocr-flow config',
+                }
 
         # Check global install
         try:
@@ -159,7 +181,8 @@ class SelfCheck:
 
         return {
             'ok': False,
-            'message': 'Not found. Install with: pip install BabelDOC or clone and use path config'
+            'message': 'Not found. Install with: pip install BabelDOC or clone and use path config',
+            'next_step': 'ocr-flow config',
         }
 
 

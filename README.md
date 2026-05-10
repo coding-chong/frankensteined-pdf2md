@@ -2,6 +2,69 @@
 
 将 PDF 文档（芯片手册、数据手册）转换为 AI 可读的 Markdown 格式的命令行工具。
 
+## Quick Start
+
+### 最短成功路径（文字版，不翻译）
+
+```bash
+ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --no-translate -v
+```
+
+### 何时使用哪种模式
+
+- **Interactive mode**：第一次使用、还不确定 PDF 类型或是否翻译时使用
+
+  ```bash
+  ocr-flow process <input.pdf> -o <output_dir> -v
+  ```
+
+- **Non-interactive mode**：已知参数、要批处理、或希望 AI 直接执行完整命令时使用
+
+  ```bash
+  ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --no-translate -v
+  ```
+
+### Non-interactive 必需参数
+
+使用 `--non-interactive` 时，必须同时提供：
+
+- `--lang`
+- `--translate` 或 `--no-translate`
+
+### 常用完整命令模板
+
+```bash
+# 文字版，不翻译
+ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --no-translate -v
+
+# 文字版，翻译为中文
+ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --translate -v
+
+# 扫描版，不翻译
+ocr-flow doctor --ocr --start-ocr
+ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanned --lang en --no-translate -v
+
+# 扫描版，翻译为中文
+ocr-flow doctor --ocr --start-ocr
+ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanned --lang en --translate -v
+```
+
+### 常见修正
+
+- 缺少 `--lang`：补上 `--lang en` 或 `--lang zh`
+- 缺少 `--translate` / `--no-translate`：明确写出其中一个
+- 不确定环境是否完整：先运行 `ocr-flow doctor`
+- 扫描版 PDF：先运行 `ocr-flow doctor --ocr --start-ocr`
+
+### 翻译任务的中间产物位置
+
+启用 `--translate` 时，OCR Flow 会先生成双语 PDF，再继续生成 Markdown：
+
+- 双语 PDF：`output/<timestamp>/<stem>/intermediate/*.dual.pdf`
+- 最终 Markdown：`output/<timestamp>/<stem>/final/*.md`
+
+如果你的目标只是尽快拿到双语 PDF，不必等 Markdown 全部完成才知道它会出现在哪里。
+
 ## 功能特性
 
 - **PDF 类型自动检测** - 智能识别文字版或扫描版 PDF
@@ -144,44 +207,36 @@ ocr-flow process test_assets/true_text_test.pdf -o test_output/ \
 
 ```bash
 # ❌ 错误命令
-ocr-flow process test_assets/true_text_test.pdf --non-interactive --no-translate
+ocr-flow process <input.pdf> --non-interactive --no-translate
 
 # 报错信息
---lang is required in non-interactive mode
+Error: --lang is required in non-interactive mode.
 
-# ✅ 修正：添加 --lang en
-ocr-flow process test_assets/true_text_test.pdf -o test_output/ \
-  --non-interactive --lang en --no-translate -v
+# ✅ 修正
+ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --no-translate -v
 ```
 
 **错误示例 2：缺少翻译选项**
 
 ```bash
 # ❌ 错误命令
-ocr-flow process test_assets/true_text_test.pdf --non-interactive --lang en
+ocr-flow process <input.pdf> --non-interactive --lang en
 
 # 报错信息
---translate or --no-translate is required in non-interactive mode
+Error: --translate or --no-translate is required in non-interactive mode.
 
-# ✅ 修正：添加 --no-translate 或 --translate
-ocr-flow process test_assets/true_text_test.pdf -o test_output/ \
-  --non-interactive --lang en --no-translate -v
+# ✅ 修正
+ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --no-translate -v
 ```
 
 **错误示例 3：交互模式 vs 非交互模式混淆**
 
-| 模式 | 命令 | 行为 |
-|------|------|------|
-| **交互模式** | 不加 `--non-interactive` | 程序逐个询问缺失参数 |
-| **非交互模式** | 加 `--non-interactive` | 必须提供所有必需参数，否则报错 |
-
 ```bash
-# 交互模式：程序会问你 PDF 类型、语言、是否翻译
-ocr-flow process test_assets/true_text_test.pdf -o test_output/ -v
+# 交互模式：程序会询问 PDF 类型、语言、是否翻译
+ocr-flow process <input.pdf> -o <output_dir> -v
 
-# 非交互模式：所有参数必须预设，不会询问
-ocr-flow process test_assets/true_text_test.pdf -o test_output/ \
-  --non-interactive --pdf-type text --lang en --no-translate -v
+# 非交互模式：所有必需参数必须一次写全
+ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --no-translate -v
 ```
 
 ## 使用方法
