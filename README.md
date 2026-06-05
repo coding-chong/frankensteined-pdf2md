@@ -368,6 +368,14 @@ ocr-flow process input.pdf -o output/ --non-interactive --recovery continue_retr
 ocr-flow process input.pdf -o output/ --non-interactive --recovery restart -v
 ```
 
+**MinerU partial 的恢复语义：**
+
+- `--recovery retry`：只重跑 MinerU 失败页，复用已完成的 OCR / split / compress 中间产物
+- `--recovery continue`：只处理未开始的页
+- `--recovery continue_retry`：同时处理失败页和未开始页
+- 如果之前已经产出部分 `final/part_XXX.md`，恢复时会保留已有成功页，只补缺页
+- 如果任务停在 OCR 阶段而不是 MinerU 阶段，应该先判断 OCR 是否完成，再决定是否适合直接用 `retry`
+
 ## 处理流程
 
 ```

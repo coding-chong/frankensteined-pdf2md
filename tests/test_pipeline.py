@@ -356,6 +356,106 @@ class TestPipelineRecovery:
         # This test verifies the parameters are accepted
         assert state_info['state'] is not None
 
+    @patch('ocr_flow.pipeline.download_images')
+    @patch('ocr_flow.pipeline.format_fix')
+    @patch('ocr_flow.pipeline.MinerUClient')
+    @patch('ocr_flow.pipeline.compress_pdf')
+    @patch('ocr_flow.pipeline.split_pdf')
+    def test_recovery_mode_retry_reuses_existing_parts_and_only_retries_failed_pages(
+        self,
+        mock_split,
+        mock_compress,
+        mock_mineru,
+        mock_format,
+        mock_download,
+        mock_config,
+        text_pdf,
+        temp_dir,
+    ):
+        """Test retry recovery resumes MinerU from failed pages without rebuilding prior steps."""
+        work_dir = temp_dir / "chunk_001"
+        split_dir = work_dir / "intermediate" / "split"
+        compress_dir = work_dir / "intermediate" / "compressed"
+        final_dir = work_dir / "final"
+        split_dir.mkdir(parents=True)
+        compress_dir.mkdir(parents=True)
+        final_dir.mkdir(parents=True)
+
+        split_files = []
+        compressed_files = []
+        for i in range(1, 4):
+            split_file = split_dir / f"part_{i:03d}.pdf"
+            split_file.write_bytes(b"%PDF")
+            split_files.append(split_file)
+
+            compressed_file = compress_dir / f"compressed_part_{i:03d}.pdf"
+            compressed_file.write_bytes(b"%PDF")
+            compressed_files.append(compressed_file)
+
+        existing_final = final_dir / "part_001.md"
+        existing_final.write_text("# existing", encoding='utf-8')
+
+        manager = StateManager(work_dir)
+        state = manager.load_or_create(text_pdf, {"pdf_type": "text", "language": "zh", "translate": False, "compress": False})
+        state.update_step("ocr", status="skipped")
+        state.update_step("translate", status="skipped")
+        state.update_step("split", status="completed", output_dir=str(split_dir), files=[file.name for file in split_files])
+        state.update_step("compress", status="completed", output_dir=str(compress_dir), files=[file.name for file in compressed_files])
+        state.update_step("mineru", status="partial", completed=[1], failed={"2": "auth", "3": "auth"})
+        state.update_step("format_fix", status="completed", completed=[1])
+        state.update_step("image_download", status="completed", completed=[1])
+        state.total_pages = 3
+        manager.save()
+
+        state_info = {
+            'state': state,
+            'state_manager': manager,
+            'current_step': 'mineru',
+            'total': 3,
+            'completed': 1,
+            'failed': ['2', '3'],
+            'pending': 0,
+        }
+
+        def convert_side_effect(pdf_path, output_dir):
+            md_path = Path(output_dir) / "full.md"
+            md_path.write_text(f"# {Path(pdf_path).name}", encoding='utf-8')
+            return md_path
+
+        def format_side_effect(md_file, output_md, is_translated=False):
+            Path(output_md).write_text(Path(md_file).read_text(encoding='utf-8'), encoding='utf-8')
+
+        mock_mineru_instance = MagicMock()
+        mock_mineru_instance.convert.side_effect = convert_side_effect
+        mock_mineru.return_value = mock_mineru_instance
+        mock_format.side_effect = format_side_effect
+        mock_download.return_value = (True, [])
+
+        pipeline = Pipeline(config=mock_config)
+        result = pipeline.run(
+            text_pdf,
+            temp_dir,
+            pdf_type="text",
+            language="zh",
+            translate=False,
+            recovery_mode="retry",
+            state_info=state_info,
+        )
+
+        assert result == final_dir
+        mock_split.assert_not_called()
+        mock_compress.assert_not_called()
+        retried_parts = [call.args[0].name for call in mock_mineru_instance.convert.call_args_list]
+        assert retried_parts == ["compressed_part_002.pdf", "compressed_part_003.pdf"]
+        assert (final_dir / "part_001.md").exists()
+        assert (final_dir / "part_002.md").exists()
+        assert (final_dir / "part_003.md").exists()
+
+        saved_state = State.load(work_dir / ".state.json")
+        assert saved_state.steps["mineru"].status == "completed"
+        assert saved_state.steps["mineru"].completed == [1, 2, 3]
+        assert saved_state.steps["mineru"].failed == {}
+
     def test_recovery_mode_restart(self, mock_config, text_pdf, output_dir):
         """Test restart recovery mode."""
         # Create an existing state
