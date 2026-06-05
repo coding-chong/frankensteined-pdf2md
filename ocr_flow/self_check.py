@@ -12,6 +12,13 @@ from typing import Dict, Any, Optional
 import requests
 
 
+def create_local_umi_session() -> requests.Session:
+    """Create a session for local UMI OCR traffic that bypasses env proxies."""
+    session = requests.Session()
+    session.trust_env = False
+    return session
+
+
 class SelfCheck:
     """Check system dependencies and configuration."""
 
@@ -101,8 +108,10 @@ class SelfCheck:
         """
         url = self.config.umiocr.url if self.config else "http://127.0.0.1:1224"
 
+        session = create_local_umi_session()
+
         try:
-            response = requests.get(
+            response = session.get(
                 f"{url}/api/doc/get_options",
                 timeout=5
             )
@@ -111,37 +120,19 @@ class SelfCheck:
             else:
                 return {'ok': False, 'message': f'Service returned status {response.status_code}'}
         except requests.exceptions.ConnectionError:
-            # Service not running, try to start if auto_start is True
             if auto_start:
-                result = start_umi_ocr()
-                if result['started']:
-                    # Wait for service to be ready
-                    for _ in range(10):
-                        time.sleep(1)
-                        try:
-                            r = requests.get(f"{url}/api/doc/get_options", timeout=2)
-                            if r.status_code == 200:
-                                return {
-                                    'ok': True,
-                                    'message': f'Service started and running at {url}',
-                                    'started': True
-                                }
-                        except:
-                            pass
-                    return {
-                        'ok': False,
-                        'message': f'Service started but not responding at {url}',
-                        'next_step': 'ocr-flow doctor --ocr --start-ocr',
-                    }
-                else:
-                    next_step = 'ocr-flow doctor --ocr --start-ocr'
-                    if 'UMI OCR not found' in result['message']:
-                        next_step = 'Install UMI OCR from https://github.com/hiroi-sora/Umi-OCR/releases'
-                    return {
-                        'ok': False,
-                        'message': f"Service not running. {result['message']}",
-                        'next_step': next_step,
-                    }
+                result = ensure_umi_ocr_service(self.config)
+                if result['ok']:
+                    result['started'] = result.get('started', False)
+                    return result
+                next_step = 'ocr-flow doctor --ocr --start-ocr'
+                if 'UMI OCR not found' in result['message']:
+                    next_step = 'Install UMI OCR from https://github.com/hiroi-sora/Umi-OCR/releases'
+                return {
+                    'ok': False,
+                    'message': result['message'],
+                    'next_step': next_step,
+                }
             return {
                 'ok': False,
                 'message': f'Service not running at {url}. Start UMI OCR application.',
@@ -186,12 +177,17 @@ class SelfCheck:
         }
 
 
-def find_umi_ocr() -> Optional[str]:
+def find_umi_ocr(config=None) -> Optional[str]:
     """Find UMI OCR executable.
 
     Returns:
         Path to UMI OCR executable or None if not found.
     """
+    if config and getattr(config, 'umiocr', None) and config.umiocr.exe_path:
+        exe_path = Path(config.umiocr.exe_path)
+        if exe_path.exists():
+            return config.umiocr.exe_path
+
     # Common names
     names = ['Umi-OCR', 'Umi-OCR.exe', 'umi-ocr']
 
@@ -251,13 +247,13 @@ def find_umi_ocr() -> Optional[str]:
     return None
 
 
-def start_umi_ocr() -> Dict[str, Any]:
+def start_umi_ocr(config=None) -> Dict[str, Any]:
     """Start UMI OCR service.
 
     Returns:
         Dict with 'started' bool and 'message' str
     """
-    umi_path = find_umi_ocr()
+    umi_path = find_umi_ocr(config)
 
     if not umi_path:
         return {
@@ -292,6 +288,44 @@ def start_umi_ocr() -> Dict[str, Any]:
             'started': False,
             'message': f'Failed to start UMI OCR: {e}'
         }
+
+
+def ensure_umi_ocr_service(config, timeout_seconds: int = 10) -> Dict[str, Any]:
+    """Ensure the UMI OCR service is reachable, starting it if needed."""
+    url = config.umiocr.url if config else "http://127.0.0.1:1224"
+    session = create_local_umi_session()
+
+    try:
+        response = session.get(f"{url}/api/doc/get_options", timeout=5)
+        if response.status_code == 200:
+            return {'ok': True, 'message': f'Service running at {url}', 'started': False}
+    except requests.exceptions.RequestException:
+        pass
+
+    start_result = start_umi_ocr(config)
+    if not start_result['started']:
+        message = start_result['message']
+        if config and not getattr(config.umiocr, 'exe_path', None):
+            message = f"{message}. Service not running and umiocr.exe_path is not configured."
+        return {'ok': False, 'message': message, 'started': False}
+
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        try:
+            response = session.get(f"{url}/api/doc/get_options", timeout=2)
+            if response.status_code == 200:
+                return {'ok': True, 'message': f'Service started and running at {url}', 'started': True}
+        except requests.exceptions.RequestException:
+            pass
+        time.sleep(1)
+
+    exe_path = getattr(config.umiocr, 'exe_path', None) if config else None
+    detail = f" from {exe_path}" if exe_path else ""
+    return {
+        'ok': False,
+        'message': f'UMI OCR service did not become ready at {url} after starting{detail}',
+        'started': False,
+    }
 
 
 def find_ghostscript(config=None) -> str:

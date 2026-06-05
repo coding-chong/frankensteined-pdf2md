@@ -268,17 +268,50 @@ class TestPipelineSteps:
         """Test OCR step for scanned PDF."""
         mock_ocr.return_value = output_dir / "ocr_result.pdf"
 
-        with patch('ocr_flow.pipeline.split_pdf') as mock_split:
-            mock_split.side_effect = Exception("Stop for test")
+        with patch('ocr_flow.pipeline.StateManager.backup_file'):
+            with patch('ocr_flow.pipeline.split_pdf') as mock_split:
+                mock_split.side_effect = Exception("Stop for test")
 
-            pipeline = Pipeline(config=mock_config)
-            try:
-                pipeline.run(text_pdf, output_dir, pdf_type="scanned")
-            except:
-                pass
+                pipeline = Pipeline(config=mock_config)
+                try:
+                    pipeline.run(text_pdf, output_dir, pdf_type="scanned")
+                except:
+                    pass
 
         # OCR should be attempted for scanned PDF
         # (may not be called if exception happens before)
+
+    @patch('ocr_flow.steps.ocr.resolve_ocr_language')
+    @patch('ocr_flow.steps.ocr.ocr_pdf')
+    def test_step_ocr_uses_document_language_and_timeout(self, mock_ocr, mock_resolve, mock_config, text_pdf, output_dir):
+        """Test scanned PDFs map document language to the OCR model and pass timeout overrides."""
+        mock_resolve.return_value = "models/config_chinese.txt"
+        mock_ocr.return_value = output_dir / "ocr_result.pdf"
+
+        with patch('ocr_flow.pipeline.StateManager.backup_file'):
+            with patch('ocr_flow.pipeline.split_pdf') as mock_split:
+                mock_split.side_effect = Exception("Stop for test")
+
+                pipeline = Pipeline(config=mock_config)
+                try:
+                    pipeline.run(
+                        text_pdf,
+                        output_dir,
+                        pdf_type="scanned",
+                        language="zh",
+                        translate=False,
+                        ocr_timeout=1234,
+                    )
+                except:
+                    pass
+
+        mock_resolve.assert_called_once_with(
+            document_language="zh",
+            configured_language=mock_config.umiocr.language,
+        )
+        assert mock_ocr.call_count == 1
+        assert mock_ocr.call_args.kwargs["timeout"] == 1234
+        assert mock_ocr.call_args.kwargs["ocr_language"] == "models/config_chinese.txt"
 
     def test_step_ocr_skipped_for_text(self, mock_config, text_pdf, output_dir):
         """Test that OCR is skipped for text PDF."""

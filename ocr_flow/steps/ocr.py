@@ -5,8 +5,43 @@
 import json
 import time
 from pathlib import Path
+from typing import Optional
 
 import requests
+
+from ..self_check import ensure_umi_ocr_service
+
+DEFAULT_OCR_TIMEOUT = 600
+LARGE_FILE_THRESHOLD_MB = 100
+LARGE_FILE_OCR_TIMEOUT = 21600
+
+DOCUMENT_LANGUAGE_TO_OCR_MODEL = {
+    "en": "models/config_en.txt",
+    "zh": "models/config_chinese.txt",
+}
+
+
+def create_local_umi_session() -> requests.Session:
+    """Create a session for local UMI OCR traffic that bypasses env proxies."""
+    session = requests.Session()
+    session.trust_env = False
+    return session
+
+
+def resolve_ocr_language(document_language: Optional[str] = None, configured_language: Optional[str] = None) -> str:
+    """Resolve the UMI OCR model for the document language."""
+    if document_language in DOCUMENT_LANGUAGE_TO_OCR_MODEL:
+        return DOCUMENT_LANGUAGE_TO_OCR_MODEL[document_language]
+    return configured_language or DOCUMENT_LANGUAGE_TO_OCR_MODEL["en"]
+
+
+def resolve_ocr_timeout(file_size_mb: float, timeout: Optional[int] = None) -> int:
+    """Resolve OCR timeout, extending it automatically for large files."""
+    if timeout is not None:
+        return timeout
+    if file_size_mb > LARGE_FILE_THRESHOLD_MB:
+        return LARGE_FILE_OCR_TIMEOUT
+    return DEFAULT_OCR_TIMEOUT
 
 
 def ocr_pdf(
@@ -14,7 +49,8 @@ def ocr_pdf(
     output_path: Path,
     config,
     logger=None,
-    timeout: int = 600,
+    timeout: Optional[int] = None,
+    ocr_language: Optional[str] = None,
 ) -> Path:
     """Process a scanned PDF with OCR using UMI OCR.
 
@@ -24,6 +60,7 @@ def ocr_pdf(
         config: Config object with umiocr settings
         logger: Logger instance for logging (optional)
         timeout: Maximum processing time in seconds
+        ocr_language: Explicit UMI OCR model path to use
 
     Returns:
         Path to the OCR'd PDF
@@ -32,9 +69,8 @@ def ocr_pdf(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Check file size
     file_size_mb = input_path.stat().st_size / (1024 * 1024)
-    if file_size_mb > 100:
+    if file_size_mb > LARGE_FILE_THRESHOLD_MB:
         msg = f"Warning: Large file ({file_size_mb:.1f}MB). OCR may take a long time."
         if logger:
             logger.warning(msg)
@@ -44,20 +80,36 @@ def ocr_pdf(
         logger.info(msg)
     print(f"  {msg}")
 
+    resolved_timeout = resolve_ocr_timeout(file_size_mb, timeout)
+    language = ocr_language or config.umiocr.language
     url = config.umiocr.url
-    language = config.umiocr.language
 
-    # Step 1: Upload PDF
+    msg = f"OCR language model: {language}"
+    if logger:
+        logger.info(msg)
+    print(f"  {msg}")
+
+    msg = f"OCR timeout: {resolved_timeout}s"
+    if logger:
+        logger.info(msg)
+    print(f"  {msg}")
+
+    service_result = ensure_umi_ocr_service(config)
+    if not service_result['ok']:
+        raise RuntimeError(service_result['message'])
+
+    session = create_local_umi_session()
+
     with open(input_path, 'rb') as f:
         files = {'file': f}
         data = {
             'json': json.dumps({
-                'doc.extractionMode': 'fullPage',  # Force OCR on entire page
+                'doc.extractionMode': 'fullPage',
                 'ocr.language': language,
-            })
+            }, ensure_ascii=False)
         }
 
-        response = requests.post(
+        response = session.post(
             f"{url}/api/doc/upload",
             files=files,
             data=data,
@@ -77,13 +129,12 @@ def ocr_pdf(
         logger.info(msg)
     print(f"  {msg}")
 
-    # Step 2: Poll for completion
     start_time = time.time()
     while True:
-        if time.time() - start_time > timeout:
+        if time.time() - start_time > resolved_timeout:
             raise RuntimeError("OCR timeout")
 
-        response = requests.post(
+        response = session.post(
             f"{url}/api/doc/result",
             json={'id': task_id, 'is_data': False},
             timeout=30
@@ -92,7 +143,7 @@ def ocr_pdf(
         try:
             result = response.json()
         except json.JSONDecodeError:
-            raise RuntimeError(f"Poll failed: invalid JSON response")
+            raise RuntimeError("Poll failed: invalid JSON response")
         if result.get('is_done'):
             break
 
@@ -106,12 +157,10 @@ def ocr_pdf(
 
         time.sleep(3)
 
-    # Check final state
     if result.get('state') != 'success':
         raise RuntimeError(f"OCR failed: {result.get('message', 'Unknown error')}")
 
-    # Step 3: Get download URL
-    response = requests.post(
+    response = session.post(
         f"{url}/api/doc/download",
         json={'id': task_id, 'file_types': ['pdfLayered']},
         timeout=30
@@ -120,26 +169,23 @@ def ocr_pdf(
     try:
         result = response.json()
     except json.JSONDecodeError:
-        raise RuntimeError(f"Download request failed: invalid JSON response")
+        raise RuntimeError("Download request failed: invalid JSON response")
     if result.get('code') != 100:
         raise RuntimeError(f"Download request failed: {result.get('data')}")
 
     download_url = result['data']
-
-    # Step 4: Download the file
     if download_url.startswith('/'):
         download_url = f"{url}{download_url}"
 
-    response = requests.get(download_url, timeout=120)
-    response.raise_for_status()  # Verify download succeeded
+    response = session.get(download_url, timeout=120)
+    response.raise_for_status()
 
     with open(output_path, 'wb') as f:
         f.write(response.content)
 
-    # Step 5: Cleanup task
     try:
-        requests.get(f"{url}/api/doc/clear/{task_id}", timeout=10)
-    except:
+        session.get(f"{url}/api/doc/clear/{task_id}", timeout=10)
+    except Exception:
         pass
 
     msg = f"OCR completed: {output_path}"
@@ -158,8 +204,9 @@ def check_umi_ocr_service(url: str = "http://127.0.0.1:1224") -> bool:
     Returns:
         True if service is available
     """
+    session = create_local_umi_session()
     try:
-        response = requests.get(f"{url}/api/doc/get_options", timeout=5)
+        response = session.get(f"{url}/api/doc/get_options", timeout=5)
         return response.status_code == 200
-    except:
+    except Exception:
         return False

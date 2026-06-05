@@ -30,6 +30,7 @@ class UmiOcrConfig:
     enabled: bool = True
     url: str = "http://127.0.0.1:1224"
     language: str = "models/config_en.txt"  # Default: English
+    exe_path: Optional[str] = None
 
 
 @dataclass
@@ -120,6 +121,8 @@ class Config:
             config.umiocr.enabled = umi.get('enabled', config.umiocr.enabled)
             config.umiocr.url = umi.get('url', config.umiocr.url)
             config.umiocr.language = umi.get('language', config.umiocr.language)
+            exe_path_val = umi.get('exe_path', config.umiocr.exe_path)
+            config.umiocr.exe_path = exe_path_val if exe_path_val else None
 
         # BabelDOC
         if 'babeldoc' in data:
@@ -175,6 +178,7 @@ class Config:
                 'enabled': self.umiocr.enabled,
                 'url': self.umiocr.url,
                 'language': self.umiocr.language,
+                'exe_path': self.umiocr.exe_path or '',
             },
             'babeldoc': {
                 'path': self.babeldoc.path or '',
@@ -239,6 +243,11 @@ class Config:
         click.echo(f"Current Ghostscript path: {config.compress.ghostscript_path or '(auto-detect)'}")
         gs_path = click.prompt("Ghostscript path (leave empty for auto-detect)", default=config.compress.ghostscript_path or "")
         config.compress.ghostscript_path = gs_path if gs_path else None
+
+        # UMI OCR exe path
+        click.echo(f"Current UMI OCR exe path: {config.umiocr.exe_path or '(auto-discover)'}")
+        umi_exe_path = click.prompt("UMI OCR exe path (leave empty for auto-discover)", default=config.umiocr.exe_path or "")
+        config.umiocr.exe_path = umi_exe_path if umi_exe_path else None
 
         # Save
         config.save()

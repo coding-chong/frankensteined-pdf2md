@@ -485,8 +485,9 @@ class TestProcessCommand:
         assert 'ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --translate -v' in result.output
         assert 'ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --no-translate -v' in result.output
 
+    @patch('click.confirm')
     @patch('ocr_flow.pipeline.Pipeline')
-    def test_process_basic(self, mock_pipeline, runner, test_pdf, mock_config):
+    def test_process_basic(self, mock_pipeline, mock_confirm, runner, test_pdf, mock_config):
         """Test basic processing invocation."""
         mock_instance = MagicMock()
         mock_instance.run.return_value = Path("/output/result")
@@ -500,8 +501,59 @@ class TestProcessCommand:
             '--no-translate'
         ])
 
-        # Check that pipeline was invoked
         mock_pipeline.assert_called_once()
+        mock_confirm.assert_not_called()
+
+    @patch('click.confirm')
+    @patch('ocr_flow.cli.show_recovery_menu')
+    @patch('ocr_flow.pipeline.Pipeline')
+    def test_process_non_interactive_ignores_stale_state_without_recovery(self, mock_pipeline, mock_show_recovery, mock_confirm, runner, test_pdf, mock_config, partial_state_dir):
+        """Test non-interactive mode does not open the recovery menu unless --recovery is provided."""
+        mock_instance = MagicMock()
+        mock_instance.run.return_value = Path("/output/result")
+        mock_pipeline.return_value = mock_instance
+        output_root = partial_state_dir.parents[1]
+
+        result = runner.invoke(cli, [
+            'process', str(test_pdf),
+            '-o', str(output_root),
+            '--non-interactive',
+            '--pdf-type', 'text',
+            '--lang', 'en',
+            '--no-translate'
+        ])
+
+        assert result.exit_code == 0
+        mock_pipeline.assert_called_once()
+        mock_show_recovery.assert_not_called()
+        mock_confirm.assert_not_called()
+
+    @patch('click.confirm')
+    @patch('ocr_flow.pipeline.Pipeline')
+    def test_process_passes_scanned_ocr_overrides(self, mock_pipeline, mock_confirm, runner, test_pdf, mock_config):
+        """Test scanned CLI options pass OCR overrides into pipeline.run."""
+        mock_instance = MagicMock()
+        mock_instance.run.return_value = Path("/output/result")
+        mock_pipeline.return_value = mock_instance
+
+        result = runner.invoke(cli, [
+            'process', str(test_pdf),
+            '--non-interactive',
+            '--pdf-type', 'scanned',
+            '--lang', 'zh',
+            '--no-translate',
+            '--ocr-timeout', '7200',
+            '--ocr-language', 'models/config_chinese.txt',
+            '--no-open-output',
+        ])
+
+        assert result.exit_code == 0
+        mock_pipeline.assert_called_once()
+        mock_confirm.assert_not_called()
+        assert mock_instance.run.call_count == 1
+        assert mock_instance.run.call_args.kwargs['language'] == 'zh'
+        assert mock_instance.run.call_args.kwargs['ocr_timeout'] == 7200
+        assert mock_instance.run.call_args.kwargs['ocr_language'] == 'models/config_chinese.txt'
 
 
 # =============================================================================

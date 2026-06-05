@@ -123,6 +123,8 @@ class Pipeline:
         compress: bool = False,
         recovery_mode: str = None,
         state_info: Dict[str, Any] = None,
+        ocr_timeout: Optional[int] = None,
+        ocr_language: Optional[str] = None,
     ) -> Path:
         """Run the full pipeline on a PDF file.
 
@@ -135,6 +137,8 @@ class Pipeline:
             compress: Whether to compress translated PDFs (disables font subsetting)
             recovery_mode: 'continue' | 'retry' | 'continue_retry' | 'restart' | None
             state_info: Existing state info for recovery
+            ocr_timeout: Override OCR timeout in seconds
+            ocr_language: Override UMI OCR model path
 
         Returns:
             Path to the final output directory
@@ -190,9 +194,19 @@ class Pipeline:
                     self.logger.info(msg)
                     if self.verbose:
                         print(f"{msg}: {input_pdf}")
-                    from .steps.ocr import ocr_pdf
+                    from .steps.ocr import ocr_pdf, resolve_ocr_language
                     ocr_output = intermediate_dir / "ocr_result.pdf"
-                    current_pdf = ocr_pdf(current_pdf, ocr_output, self.config, logger=self.logger)
+                    current_pdf = ocr_pdf(
+                        current_pdf,
+                        ocr_output,
+                        self.config,
+                        logger=self.logger,
+                        timeout=ocr_timeout,
+                        ocr_language=ocr_language or resolve_ocr_language(
+                            document_language=language,
+                            configured_language=self.config.umiocr.language,
+                        ),
+                    )
                     self.state_manager.backup_file("ocr", current_pdf)
                     state.update_step("ocr", status="completed", output=str(current_pdf))
                     self.state_manager.save()

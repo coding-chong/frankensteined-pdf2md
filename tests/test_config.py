@@ -67,16 +67,23 @@ class TestUmiOcrConfig:
         config = UmiOcrConfig()
         assert config.enabled == True
 
+    def test_umiocr_default_exe_path(self):
+        """Test default UMI OCR exe path."""
+        config = UmiOcrConfig()
+        assert config.exe_path is None
+
     def test_umiocr_custom_values(self):
         """Test creating with custom values."""
         config = UmiOcrConfig(
             enabled=False,
             url="http://192.168.1.100:8080",
-            language="models/config_zh.txt",
+            language="models/config_chinese.txt",
+            exe_path="E:/Umi-OCR/Umi-OCR.exe",
         )
         assert config.enabled == False
         assert config.url == "http://192.168.1.100:8080"
-        assert config.language == "models/config_zh.txt"
+        assert config.language == "models/config_chinese.txt"
+        assert config.exe_path == "E:/Umi-OCR/Umi-OCR.exe"
 
 
 # =============================================================================
@@ -327,7 +334,8 @@ verbose = true
 [umiocr]
 enabled = false
 url = "http://192.168.1.1:1224"
-language = "models/config_zh.txt"
+language = "models/config_chinese.txt"
+exe_path = "E:/Umi-OCR/Umi-OCR.exe"
 
 [babeldoc]
 path = "/path/to/babeldoc"
@@ -359,7 +367,8 @@ download_images = false
         assert config.verbose == True
         assert config.umiocr.enabled == False
         assert config.umiocr.url == "http://192.168.1.1:1224"
-        assert config.umiocr.language == "models/config_zh.txt"
+        assert config.umiocr.language == "models/config_chinese.txt"
+        assert config.umiocr.exe_path == "E:/Umi-OCR/Umi-OCR.exe"
         assert config.babeldoc.path == "/path/to/babeldoc"
         assert config.babeldoc.lang_in == "ja-JP"
         assert config.babeldoc.openai_model == "gpt-4"
@@ -373,6 +382,7 @@ download_images = false
         config = Config()
         config.babeldoc.path = ""  # Empty string
         config.compress.ghostscript_path = ""  # Empty string
+        config.umiocr.exe_path = ""  # Empty string
 
         config_path = temp_dir / "empty.toml"
         config.save(config_path)
@@ -381,6 +391,7 @@ download_images = false
 
         # Empty strings should be converted to None or remain empty
         assert loaded.babeldoc.path == "" or loaded.babeldoc.path is None
+        assert loaded.umiocr.exe_path == "" or loaded.umiocr.exe_path is None
 
 
 # =============================================================================

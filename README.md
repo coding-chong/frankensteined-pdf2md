@@ -10,6 +10,13 @@
 ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --no-translate -v
 ```
 
+### 最短成功路径（中文扫描版，不翻译）
+
+```bash
+ocr-flow doctor --ocr --start-ocr
+ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanned --lang zh --no-translate --no-open-output -v
+```
+
 ### 何时使用哪种模式
 
 - **Interactive mode**：第一次使用、还不确定 PDF 类型或是否翻译时使用
@@ -40,11 +47,15 @@ ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text -
 # 文字版，翻译为中文
 ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --translate -v
 
-# 扫描版，不翻译
+# 扫描版英文，不翻译
 ocr-flow doctor --ocr --start-ocr
 ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanned --lang en --no-translate -v
 
-# 扫描版，翻译为中文
+# 扫描版中文，不翻译
+ocr-flow doctor --ocr --start-ocr
+ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanned --lang zh --no-translate --no-open-output -v
+
+# 扫描版英文，翻译为中文
 ocr-flow doctor --ocr --start-ocr
 ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanned --lang en --translate -v
 ```
@@ -55,6 +66,9 @@ ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanne
 - 缺少 `--translate` / `--no-translate`：明确写出其中一个
 - 不确定环境是否完整：先运行 `ocr-flow doctor`
 - 扫描版 PDF：先运行 `ocr-flow doctor --ocr --start-ocr`
+- 如果自动启动 UMI OCR 失败：运行 `ocr-flow config` 填写 `umiocr.exe_path`，或手动放到常见安装目录
+- 中文扫描版 PDF：使用 `--pdf-type scanned --lang zh --no-translate`，UMI OCR 模型会跟随 `--lang` 自动切到中文
+- 大型扫描版 PDF：OCR 超时会按文件大小自动放宽；如仍需覆盖，可显式传 `--ocr-timeout <seconds>`
 
 ### 翻译任务的中间产物位置
 
@@ -138,7 +152,8 @@ qps = 2  # 翻译 API QPS 限制（推荐最大值: 3）
 
 [umiocr]
 url = "http://127.0.0.1:1224"
-language = "models/config_en.txt"
+language = "models/config_en.txt"  # 默认回退模型；扫描版会优先按 --lang 自动选择 OCR 模型
+exe_path = "E:/umiocr/Umi-OCR.exe"  # 可选；用于 doctor --ocr --start-ocr 自动启动
 
 [compress]
 ghostscript_path = ""  # 留空则自动检测
@@ -176,12 +191,22 @@ ocr-flow process test_assets/true_text_test.pdf -o test_output/ \
 # 先检查/启动 OCR 服务
 ocr-flow doctor --ocr --start-ocr
 
-# 再运行扫描版测试
+# 再运行扫描版英文测试
 ocr-flow process test_assets/true_scanned_test.pdf -o test_output/ \
   --non-interactive --pdf-type scanned --lang en --no-translate -v
 ```
 
 预期结果：约5-8分钟完成（取决于 OCR 速度）。
+
+**扫描版中文测试（不翻译）：**
+
+```bash
+ocr-flow doctor --ocr --start-ocr
+ocr-flow process <input.pdf> -o test_output/ \
+  --non-interactive --pdf-type scanned --lang zh --no-translate --no-open-output -v
+```
+
+说明：扫描版会优先按 `--lang` 自动选择 UMI OCR 模型；中文文档不需要再手动把配置文件改成中文模型。
 
 **翻译测试：**
 

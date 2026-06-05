@@ -19,6 +19,7 @@ from unittest.mock import patch, MagicMock, Mock
 
 from ocr_flow.self_check import (
     SelfCheck,
+    ensure_umi_ocr_service,
     find_ghostscript,
     find_umi_ocr,
     start_umi_ocr,
@@ -218,12 +219,14 @@ class TestCheckMineruApi:
 class TestCheckUmiOcr:
     """Tests for check_umi_ocr method."""
 
-    @patch('ocr_flow.self_check.requests.get')
-    def test_check_umi_ocr_running(self, mock_get, mock_config):
+    @patch('ocr_flow.self_check.requests.Session')
+    def test_check_umi_ocr_running(self, mock_session_cls, mock_config):
         """Test when UMI OCR service is running."""
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_get.return_value = mock_response
+        mock_session.get.return_value = mock_response
 
         checker = SelfCheck(config=mock_config)
         result = checker.check_umi_ocr()
@@ -231,11 +234,13 @@ class TestCheckUmiOcr:
         assert result['ok'] == True
         assert 'running' in result['message'].lower()
 
-    @patch('ocr_flow.self_check.requests.get')
-    def test_check_umi_ocr_not_running(self, mock_get, mock_config):
+    @patch('ocr_flow.self_check.requests.Session')
+    def test_check_umi_ocr_not_running(self, mock_session_cls, mock_config):
         """Test when UMI OCR service is not running."""
         import requests
-        mock_get.side_effect = requests.exceptions.ConnectionError()
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_session.get.side_effect = requests.exceptions.ConnectionError()
 
         checker = SelfCheck(config=mock_config)
         result = checker.check_umi_ocr()
@@ -243,44 +248,51 @@ class TestCheckUmiOcr:
         assert result['ok'] == False
         assert 'not running' in result['message'].lower()
 
-    @patch('ocr_flow.self_check.requests.get')
-    def test_check_umi_ocr_wrong_status(self, mock_get, mock_config):
+    @patch('ocr_flow.self_check.requests.Session')
+    def test_check_umi_ocr_wrong_status(self, mock_session_cls, mock_config):
         """Test when UMI OCR returns wrong status."""
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
         mock_response = MagicMock()
         mock_response.status_code = 500
-        mock_get.return_value = mock_response
+        mock_session.get.return_value = mock_response
 
         checker = SelfCheck(config=mock_config)
         result = checker.check_umi_ocr()
 
         assert result['ok'] == False
 
-    @patch('ocr_flow.self_check.start_umi_ocr')
-    @patch('ocr_flow.self_check.requests.get')
-    def test_check_umi_ocr_auto_start(self, mock_get, mock_start, mock_config):
+    @patch('ocr_flow.self_check.ensure_umi_ocr_service')
+    @patch('ocr_flow.self_check.requests.Session')
+    def test_check_umi_ocr_auto_start(self, mock_session_cls, mock_ensure, mock_config):
         """Test auto-starting UMI OCR."""
         import requests
 
-        # First call fails (not running)
-        # After start, second check succeeds
-        mock_get.side_effect = [
-            requests.exceptions.ConnectionError(),
-            MagicMock(status_code=200)
-        ]
-        mock_start.return_value = {'started': True, 'message': 'Started'}
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_session.get.side_effect = requests.exceptions.ConnectionError()
+        mock_ensure.return_value = {
+            'ok': True,
+            'message': 'Service started and running at http://127.0.0.1:1224',
+            'started': True,
+        }
 
         checker = SelfCheck(config=mock_config)
         result = checker.check_umi_ocr(auto_start=True)
 
-        mock_start.assert_called_once()
+        mock_ensure.assert_called_once_with(mock_config)
+        assert result['ok'] == True
+        assert result['started'] == True
 
     @patch('ocr_flow.self_check.start_umi_ocr')
-    @patch('ocr_flow.self_check.requests.get')
-    def test_check_umi_ocr_auto_start_not_installed(self, mock_get, mock_start, mock_config):
+    @patch('ocr_flow.self_check.requests.Session')
+    def test_check_umi_ocr_auto_start_not_installed(self, mock_session_cls, mock_start, mock_config):
         """Test auto-starting UMI OCR when the app is not installed."""
         import requests
 
-        mock_get.side_effect = requests.exceptions.ConnectionError()
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_session.get.side_effect = requests.exceptions.ConnectionError()
         mock_start.return_value = {
             'started': False,
             'message': 'UMI OCR not found. Download from https://github.com/hiroi-sora/Umi-OCR/releases',
@@ -382,6 +394,14 @@ class TestFindGhostscript:
 class TestFindUmiOcr:
     """Tests for find_umi_ocr function."""
 
+    def test_start_uses_configured_exe_path(self, mock_config, monkeypatch):
+        """Test configured exe path is preferred over discovery."""
+        mock_config.umiocr.exe_path = 'E:/Umi-OCR/Umi-OCR.exe'
+        monkeypatch.setattr(Path, 'exists', lambda self: str(self).replace('\\', '/') == 'E:/Umi-OCR/Umi-OCR.exe')
+
+        result = find_umi_ocr(mock_config)
+        assert result == 'E:/Umi-OCR/Umi-OCR.exe'
+
     def test_find_in_path(self, monkeypatch):
         """Test finding UMI OCR in PATH."""
         monkeypatch.setattr(shutil, 'which', lambda name: '/usr/bin/umi-ocr' if name == 'umi-ocr' else None)
@@ -424,7 +444,7 @@ class TestStartUmiOcr:
 
     def test_start_not_found(self, monkeypatch):
         """Test starting when UMI OCR not found."""
-        monkeypatch.setattr('ocr_flow.self_check.find_umi_ocr', lambda: None)
+        monkeypatch.setattr('ocr_flow.self_check.find_umi_ocr', lambda config=None: None)
 
         result = start_umi_ocr()
 
@@ -434,7 +454,7 @@ class TestStartUmiOcr:
     @patch('subprocess.Popen')
     def test_start_success(self, mock_popen, monkeypatch):
         """Test successful start of UMI OCR."""
-        monkeypatch.setattr('ocr_flow.self_check.find_umi_ocr', lambda: '/path/to/umi-ocr')
+        monkeypatch.setattr('ocr_flow.self_check.find_umi_ocr', lambda config=None: '/path/to/umi-ocr')
         mock_popen.return_value = MagicMock()
 
         result = start_umi_ocr()
@@ -445,10 +465,72 @@ class TestStartUmiOcr:
     @patch('subprocess.Popen')
     def test_start_exception(self, mock_popen, monkeypatch):
         """Test handling exception during start."""
-        monkeypatch.setattr('ocr_flow.self_check.find_umi_ocr', lambda: '/path/to/umi-ocr')
+        monkeypatch.setattr('ocr_flow.self_check.find_umi_ocr', lambda config=None: '/path/to/umi-ocr')
         mock_popen.side_effect = Exception("Failed to start")
 
         result = start_umi_ocr()
 
         assert result['started'] == False
         assert 'Failed' in result['message']
+
+
+class TestEnsureUmiOcrService:
+    """Tests for ensure_umi_ocr_service function."""
+
+    @patch('ocr_flow.self_check.requests.Session')
+    @patch('ocr_flow.self_check.start_umi_ocr')
+    def test_ensure_umi_ocr_service_bypasses_env_proxies(self, mock_start, mock_session_cls, mock_config):
+        """Test local UMI OCR readiness checks bypass environment proxies."""
+        import requests
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_session.get.side_effect = [
+            requests.exceptions.ConnectionError(),
+            MagicMock(status_code=200),
+        ]
+        mock_start.return_value = {'started': True, 'message': 'Started UMI OCR'}
+        mock_config.umiocr.exe_path = 'E:/Umi-OCR/Umi-OCR.exe'
+
+        result = ensure_umi_ocr_service(mock_config)
+
+        assert result['ok'] is True
+        assert mock_session.trust_env is False
+        mock_start.assert_called_once_with(mock_config)
+
+    @patch('ocr_flow.self_check.requests.Session')
+    @patch('ocr_flow.self_check.start_umi_ocr')
+    def test_ensure_umi_ocr_service_starts_when_unreachable(self, mock_start, mock_session_cls, mock_config):
+        """Test service auto-starts when unreachable."""
+        import requests
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_config.umiocr.exe_path = 'E:/Umi-OCR/Umi-OCR.exe'
+        mock_session.get.side_effect = [
+            requests.exceptions.ConnectionError(),
+            MagicMock(status_code=200),
+        ]
+        mock_start.return_value = {'started': True, 'message': 'Started UMI OCR'}
+
+        result = ensure_umi_ocr_service(mock_config)
+
+        assert result['ok'] is True
+        mock_start.assert_called_once_with(mock_config)
+
+    @patch('ocr_flow.self_check.requests.Session')
+    @patch('ocr_flow.self_check.start_umi_ocr')
+    def test_ensure_umi_ocr_service_fails_without_exe_path(self, mock_start, mock_session_cls, mock_config):
+        """Test failure is explicit when exe path is not configured."""
+        import requests
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_config.umiocr.exe_path = None
+        mock_session.get.side_effect = requests.exceptions.ConnectionError()
+        mock_start.return_value = {'started': False, 'message': 'UMI OCR not found'}
+
+        result = ensure_umi_ocr_service(mock_config)
+
+        assert result['ok'] is False
+        assert 'exe_path' in result['message']

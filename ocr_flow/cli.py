@@ -328,9 +328,13 @@ def cli():
     help='Translation mode. Required in non-interactive mode: choose --translate or --no-translate.'
 )
 @click.option('--compress', is_flag=True, help='Compress translated PDFs (disables font subsetting to preserve CJK encoding)')
+@click.option('--ocr-timeout', type=click.INT, help='Override OCR timeout in seconds for scanned PDFs. Large scanned PDFs auto-extend this by default.')
+@click.option('--ocr-language', type=str, help='Override UMI OCR model path for scanned PDFs. By default, scanned PDFs pick the OCR model from --lang.')
+@click.option('--open-output/--no-open-output', default=None, help='Open output directory after completion. Defaults to prompt in interactive mode and disabled in non-interactive mode.')
 @click.option('--recovery', type=click.Choice(['continue', 'retry', 'continue_retry', 'restart']), default=None, help='Recovery mode for non-interactive mode: continue, retry, continue_retry, restart')
 def process(input_path: str, output: str, config: str, verbose: bool,
-            non_interactive: bool, pdf_type: str, lang: str, translate: bool, compress: bool, recovery: str):
+            non_interactive: bool, pdf_type: str, lang: str, translate: bool, compress: bool,
+            ocr_timeout: int, ocr_language: str, open_output: bool, recovery: str):
     """Process PDF file(s) to Markdown.
 
     INPUT_PATH: PDF file or directory containing PDF files
@@ -343,6 +347,7 @@ def process(input_path: str, output: str, config: str, verbose: bool,
     Common examples:
       ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --translate -v
       ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanned --lang en --no-translate -v
+      ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanned --lang zh --no-translate -v
       ocr-flow process <input.pdf> -o <output_dir> -v
     """
     import shutil
@@ -404,23 +409,23 @@ def process(input_path: str, output: str, config: str, verbose: bool,
                     if potential_state.exists():
                         state_info = detect_unfinished_task(subsubdir)
                         if state_info:
-                            # Non-interactive mode: use --recovery parameter
-                            if non_interactive and recovery:
-                                recovery_mode = recovery
-                                console.print(f"\n[bold yellow][*] 检测到上次未完成的任务，使用恢复模式: {recovery_mode}[/bold yellow]")
-                                if recovery_mode == 'restart':
-                                    shutil.rmtree(subsubdir)
-                                    console.print("[yellow]已删除，将重新开始[/yellow]")
-                            else:
-                                # Interactive mode: show menu
-                                recovery_mode = show_recovery_menu(state_info)
-                                if recovery_mode == 'cancel':
-                                    return
-                                elif recovery_mode == 'restart':
-                                    # Delete existing work
-                                    if click.confirm(f"确认删除 {subsubdir}?", default=False):
+                            if non_interactive:
+                                if recovery:
+                                    recovery_mode = recovery
+                                    console.print(f"\n[bold yellow][*] 检测到上次未完成的任务，使用恢复模式: {recovery_mode}[/bold yellow]")
+                                    if recovery_mode == 'restart':
                                         shutil.rmtree(subsubdir)
                                         console.print("[yellow]已删除，将重新开始[/yellow]")
+                                    break
+                                continue
+
+                            recovery_mode = show_recovery_menu(state_info)
+                            if recovery_mode == 'cancel':
+                                return
+                            elif recovery_mode == 'restart':
+                                if click.confirm(f"确认删除 {subsubdir}?", default=False):
+                                    shutil.rmtree(subsubdir)
+                                    console.print("[yellow]已删除，将重新开始[/yellow]")
                             break
             if recovery_mode:
                 break
@@ -541,7 +546,9 @@ def process(input_path: str, output: str, config: str, verbose: bool,
                     translate=file_translate,
                     compress=compress,
                     recovery_mode=recovery_mode,
-                    state_info=state_info if recovery_mode else None
+                    state_info=state_info if recovery_mode else None,
+                    ocr_timeout=ocr_timeout,
+                    ocr_language=ocr_language,
                 )
                 console.print(f"[green][OK] Done:[/green] {pdf_file.name} -> {result}")
                 success_count += 1
@@ -565,8 +572,11 @@ def process(input_path: str, output: str, config: str, verbose: bool,
     console.print(f"  [T] 耗时: {elapsed_time:.1f} 秒")
     console.print(f"[bold]{'═' * 40}[/bold]\n")
 
-    # S2.4: Ask to open output directory
-    if click.confirm("是否打开输出目录?", default=True):
+    should_open_output = open_output
+    if should_open_output is None and not non_interactive:
+        should_open_output = click.confirm("是否打开输出目录?", default=True)
+
+    if should_open_output:
         import subprocess
         try:
             if sys.platform == 'win32':
