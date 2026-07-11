@@ -1,0 +1,32 @@
+{
+  "runtime": "Umi-OCR Paddle",
+  "version": "2.1.5",
+  "platform": "Windows",
+  "files": [
+    {
+      "path": "Umi-OCR.exe",
+      "bytes": 213504,
+      "sha256": "330B87A5F4F72CE07B41B7BEC31246E80DA89E51B6847ECD6BB0A4AD8A8C4742"
+    },
+    {
+      "path": "UmiOCR-data/main.py",
+      "bytes": 5856,
+      "sha256": "125A27E2441FAE50590D234C2C48F9CCAD55744E3C8F49A59BE5BA6279868C36"
+    },
+    {
+      "path": "UmiOCR-data/about.json",
+      "bytes": 4943,
+      "sha256": "FDF6ED42AD9DAEDFF4D8923F4631835F15E4EB34322B9EFF1CFB196CF632EB5E"
+    },
+    {
+      "path": "UmiOCR-data/plugins/win7_x64_PaddleOCR-json/models/config_en.txt",
+      "bytes": 286,
+      "sha256": "9F3FD3B8F47852B32D57EFEAED29D1C9D6EF2B7293C650707013960B82DE92A2"
+    },
+    {
+      "path": "UmiOCR-data/plugins/win7_x64_PaddleOCR-json/models/config_chinese.txt",
+      "bytes": 287,
+      "sha256": "2B2E2BF1344192D6959F67A2D93D316C09BF0D6083722C594FBBBA4325B39255"
+    }
+  ]
+}

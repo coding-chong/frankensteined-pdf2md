@@ -1,0 +1,41 @@
+{
+  "runtime": "BabelDOC",
+  "source_url": "https://github.com/funstory-ai/BabelDOC.git",
+  "release_tag": "v0.6.3",
+  "version": "0.6.3",
+  "revision": "28f784ca6b437dbba040bfd9c67110373cd0924b",
+  "lock": {
+    "path": "babeldoc-v0.6.3.uv.lock",
+    "sha256": "AE94ED3C911DD3508FA5DDEDF2D95D3E66501653F25082976F0CF5638CB0EAF2"
+  },
+  "provider_files": {
+    "babeldoc/docvision/doclayout.py": {
+      "upstream_blob": "14126c1241263f3ee23cc31cffcfb18cd88a3ade",
+      "windows_directml_blob": "2918aafe10314edcddf9d08741401a594062f80b"
+    }
+  },
+  "profiles": {
+    "cpu-safe": {
+      "extra": null,
+      "reinstall_packages": [
+        "onnxruntime"
+      ],
+      "post_sync_packages": [],
+      "patch": null,
+      "provider_policy": "Upstream CPU/CoreML layout inference only",
+      "table_policy": "retired in BabelDOC 0.6",
+      "platform": "all"
+    },
+    "windows-directml": {
+      "extra": "directml",
+      "reinstall_packages": [],
+      "post_sync_packages": [
+        "onnxruntime-directml==1.24.4"
+      ],
+      "patch": "patches/babeldoc-v0.6.3-windows-directml.patch",
+      "provider_policy": "DirectML layout inference with CPU fallback",
+      "table_policy": "retired in BabelDOC 0.6",
+      "platform": "Windows only"
+    }
+  }
+}

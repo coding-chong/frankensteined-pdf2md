@@ -38,3 +38,10 @@ windows = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["ocr_flow*"]
+
+[tool.setuptools.package-data]
+ocr_flow = [
+    "runtime_profiles/*.json",
+    "runtime_profiles/*.uv.lock",
+    "runtime_profiles/patches/*.patch",
+]

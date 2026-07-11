@@ -4,7 +4,89 @@
 
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
+
+from ocr_flow.config import normalize_primary_font_family
+from ocr_flow.runtime import BabelDocRuntime, require_babeldoc_runtime, resolve_babeldoc_runtime
+
+
+def _format_command_for_log(command: Sequence[str]) -> str:
+    """Format a BabelDOC command without exposing sensitive option values."""
+    redacted = list(command)
+    for index, argument in enumerate(redacted[:-1]):
+        if argument == "--openai-api-key":
+            redacted[index + 1] = "***"
+    return " ".join(redacted)
+
+
+def _redact_secret(value: str, secret: str) -> str:
+    """Remove a configured secret from subprocess output before surfacing it."""
+    return value.replace(secret, "***") if secret else value
+
+
+def _build_babeldoc_command(
+    input_path: Path,
+    output_dir: Path,
+    config,
+    *,
+    skip_clean: bool,
+    ocr_workaround: bool,
+    runtime: Optional[BabelDocRuntime] = None,
+) -> list[str]:
+    """Build the BabelDOC command without formatting it for display."""
+    runtime = runtime or resolve_babeldoc_runtime(config)
+    command = [
+        "uv",
+        "run",
+        "--directory",
+        str(runtime.checkout),
+        "--locked",
+        "babeldoc",
+    ]
+
+    command.extend(
+        [
+            "--files",
+            str(input_path),
+            "--output",
+            str(output_dir),
+            "--use-alternating-pages-dual",
+            "--dual-translate-first",
+            "--watermark-output-mode=no_watermark",
+            "--lang-in",
+            config.babeldoc.lang_in,
+            "--lang-out",
+            config.babeldoc.lang_out,
+            "--qps",
+            str(config.babeldoc.qps),
+        ]
+    )
+
+    primary_font_family = normalize_primary_font_family(
+        config.babeldoc.primary_font_family
+    )
+    if primary_font_family:
+        command.extend(["--primary-font-family", primary_font_family])
+
+    if ocr_workaround:
+        command.append("--ocr-workaround")
+    if skip_clean:
+        command.append("--skip-clean")
+
+    if config.babeldoc.openai:
+        command.extend(
+            [
+                "--openai",
+                "--openai-model",
+                config.babeldoc.openai_model,
+                "--openai-base-url",
+                config.babeldoc.openai_base_url,
+                "--openai-api-key",
+                config.babeldoc.openai_api_key,
+            ]
+        )
+
+    return command
 
 
 def translate_pdf(
@@ -34,43 +116,17 @@ def translate_pdf(
     output_dir = output_path.parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build BabelDOC command as a list
-    if config.babeldoc.path:
-        cmd = [
-            'uv', 'run', '--directory', config.babeldoc.path, 'babeldoc',
-        ]
-    else:
-        cmd = ['babeldoc']
+    runtime = require_babeldoc_runtime(config)
+    cmd = _build_babeldoc_command(
+        input_path,
+        output_dir,
+        config,
+        skip_clean=skip_clean,
+        ocr_workaround=ocr_workaround,
+        runtime=runtime,
+    )
 
-    cmd.extend([
-        '--files', str(input_path),
-        '--output', str(output_dir),
-        '--use-alternating-pages-dual',
-        '--dual-translate-first',  # Translation first, then original
-        '--watermark-output-mode=no_watermark',
-        '--lang-in', config.babeldoc.lang_in,
-        '--lang-out', config.babeldoc.lang_out,
-        '--qps', str(config.babeldoc.qps),
-    ])
-
-    if ocr_workaround:
-        cmd.append('--ocr-workaround')
-
-    # Skip font subsetting when compressing with Ghostscript
-    # This preserves CJK font encoding to avoid garbled text after compression
-    if skip_clean:
-        cmd.append('--skip-clean')
-
-    # Add OpenAI config if enabled
-    if config.babeldoc.openai:
-        cmd.extend([
-            '--openai',
-            '--openai-model', config.babeldoc.openai_model,
-            '--openai-base-url', config.babeldoc.openai_base_url,
-            '--openai-api-key', config.babeldoc.openai_api_key,
-        ])
-
-    msg = f"Running: {' '.join(cmd)}"
+    msg = f"Running: {_format_command_for_log(cmd)}"
     if logger:
         logger.info(msg)
     print(f"  {msg}")
@@ -90,21 +146,31 @@ def translate_pdf(
 
         # Provide user-friendly error messages
         if "rate limit" in combined or "rate_limit" in combined:
-            raise RuntimeError("Translation API rate limited. Please wait and retry later.")
-        elif "api key" in combined or "api_key" in combined or "invalid key" in combined:
-            raise RuntimeError("Invalid API key. Check babeldoc.openai_api_key in config.")
+            raise RuntimeError(
+                "Translation API rate limited. Please wait and retry later."
+            )
+        elif (
+            "api key" in combined or "api_key" in combined or "invalid key" in combined
+        ):
+            raise RuntimeError(
+                "Invalid API key. Check babeldoc.openai_api_key in config."
+            )
         elif "not found" in combined or "command not found" in combined:
-            if config.babeldoc.path:
-                raise RuntimeError(f"BabelDOC not found at {config.babeldoc.path}. Check babeldoc.path in config.")
-            else:
-                raise RuntimeError("BabelDOC not found. Install with: pip install BabelDOC")
+            raise RuntimeError("BabelDOC Runtime is unavailable. Run `ocr-flow runtime setup`.")
         elif "connection" in combined or "timeout" in combined:
-            raise RuntimeError(f"Network error connecting to translation API. Check your network connection.")
+            raise RuntimeError(
+                "Network error connecting to translation API. Check your network connection."
+            )
         elif "insufficient" in combined or "quota" in combined:
             raise RuntimeError("API quota exhausted. Check your API usage limits.")
 
         # Generic error with truncated output
-        error_msg = result.stderr[:500] if result.stderr else result.stdout[:500] or "Unknown error"
+        error_msg = (
+            result.stderr[:500]
+            if result.stderr
+            else result.stdout[:500] or "Unknown error"
+        )
+        error_msg = _redact_secret(error_msg, config.babeldoc.openai_api_key)
         raise RuntimeError(f"BabelDOC failed: {error_msg}")
 
     # Find the output file
@@ -153,20 +219,14 @@ def check_babeldoc_available(config) -> bool:
     Returns:
         True if BabelDOC can be invoked
     """
-    if config.babeldoc.path:
-        babel_path = Path(config.babeldoc.path)
-        if not babel_path.exists():
-            return False
-        # Check for uv
-        try:
-            subprocess.run(['uv', '--version'], capture_output=True, check=True, timeout=10)
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-            return False
-
-    # Check global install
     try:
-        subprocess.run(['babeldoc', '--version'], capture_output=True, check=True, timeout=10)
+        require_babeldoc_runtime(config)
+        subprocess.run(["uv", "--version"], capture_output=True, check=True, timeout=10)
         return True
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+    except (
+        RuntimeError,
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ):
         return False

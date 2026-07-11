@@ -74,7 +74,8 @@ Config file: `~/.ocr-flow/config.toml` (Windows: `%USERPROFILE%\.ocr-flow\config
 Key settings:
 - `mineru.api_token` - Required for PDF conversion
 - `compress.ghostscript_path` - Auto-detected if empty
-- `babeldoc.path` - Path to BabelDOC git repo (for translation)
+- `babeldoc.path` - Optional BabelDOC Git worktree already normalized by
+  `ocr-flow runtime setup --path`; leave empty for the managed runtime
 - `umiocr.url` - Local OCR service URL (default: `http://127.0.0.1:1224`)
 
 ### State Management
@@ -96,7 +97,7 @@ State tracks: current step, completed files, failed files. On interrupt, user ca
 |------------|---------|---------|
 | Ghostscript | PDF compression | https://ghostscript.com/ |
 | UMI OCR | Scanned PDF OCR | https://github.com/hiroi-sora/Umi-OCR/releases |
-| BabelDOC | PDF translation | `git clone https://github.com/funstory-ai/BabelDOC.git` |
+| BabelDOC | PDF translation | `ocr-flow runtime setup`; use `runtime setup --path <git-root>` only to destructively normalize an existing clone |
 | MinerU API | Cloud PDF→Markdown | Get token from https://mineru.net/ |
 
 ## Notes

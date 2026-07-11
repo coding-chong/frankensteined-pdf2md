@@ -1,0 +1,17 @@
+diff --git a/babeldoc/docvision/doclayout.py b/babeldoc/docvision/doclayout.py
+index 14126c1..2918aaf 100644
+--- a/babeldoc/docvision/doclayout.py
++++ b/babeldoc/docvision/doclayout.py
+@@ -66,9 +66,9 @@ class OnnxModel(DocLayoutModel):
+             )
+         else:
+             for provider in available_providers:
+-                # disable dml|cuda|
+-                # directml/cuda may encounter problems under special circumstances
+-                if re.match(r"cpu", provider, re.IGNORECASE):
++                # DirectML is enabled only by Frank OCR's Windows profile.
++                # CUDA remains disabled because it is outside that profile.
++                if re.match(r"cpu|dml", provider, re.IGNORECASE):
+                     logger.info(f"Available Provider: {provider}")
+                     providers.append(provider)
+         self.model = onnxruntime.InferenceSession(

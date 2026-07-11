@@ -8,6 +8,21 @@ from dataclasses import dataclass, field
 from typing import Optional
 import click
 
+
+PRIMARY_FONT_FAMILIES = ("serif", "sans-serif", "script")
+
+
+def normalize_primary_font_family(value: Optional[str]) -> Optional[str]:
+    """Normalize the public BabelDOC font-family preference."""
+    if value is None or value == "":
+        return None
+    if value not in PRIMARY_FONT_FAMILIES:
+        choices = ", ".join(PRIMARY_FONT_FAMILIES)
+        raise ValueError(
+            f"babeldoc.primary_font_family must be one of {choices}, or empty"
+        )
+    return value
+
 # Try to import tomli (Python 3.11+ has tomllib built-in)
 try:
     import tomllib
@@ -36,7 +51,7 @@ class UmiOcrConfig:
 @dataclass
 class BabelDocConfig:
     """BabelDOC configuration."""
-    path: Optional[str] = None  # Path to BabelDOC git repo
+    path: Optional[str] = None  # Explicit checkout normalized by runtime setup --path
     lang_in: str = "en-US"
     lang_out: str = "zh-CN"
     openai: bool = True
@@ -44,6 +59,7 @@ class BabelDocConfig:
     openai_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     openai_api_key: str = ""
     qps: int = 2  # QPS limit for translation API (max recommended: 3)
+    primary_font_family: Optional[str] = None
 
 
 @dataclass
@@ -137,6 +153,11 @@ class Config:
             config.babeldoc.openai_base_url = babel.get('openai_base_url', config.babeldoc.openai_base_url)
             config.babeldoc.openai_api_key = babel.get('openai_api_key', config.babeldoc.openai_api_key)
             config.babeldoc.qps = babel.get('qps', config.babeldoc.qps)
+            config.babeldoc.primary_font_family = normalize_primary_font_family(
+                babel.get(
+                    'primary_font_family', config.babeldoc.primary_font_family
+                )
+            )
 
         # Compress
         if 'compress' in data:
@@ -189,6 +210,9 @@ class Config:
                 'openai_base_url': self.babeldoc.openai_base_url,
                 'openai_api_key': self.babeldoc.openai_api_key,
                 'qps': self.babeldoc.qps,
+                'primary_font_family': normalize_primary_font_family(
+                    self.babeldoc.primary_font_family
+                ) or '',
             },
             'compress': {
                 'ghostscript_path': self.compress.ghostscript_path or '',
@@ -234,10 +258,27 @@ class Config:
         base_url = click.prompt("OpenAI Base URL", default=config.babeldoc.openai_base_url)
         config.babeldoc.openai_base_url = base_url
 
-        # BabelDOC path
-        click.echo(f"Current BabelDOC path: {config.babeldoc.path or '(use global install)'}")
-        path = click.prompt("BabelDOC path (leave empty for global install)", default=config.babeldoc.path or "")
-        config.babeldoc.path = path if path else None
+        click.echo(
+            f"Current BabelDOC checkout: {config.babeldoc.path or '(managed runtime)'}"
+        )
+        path = click.prompt(
+            "BabelDOC Git checkout (leave empty for managed runtime)",
+            default=config.babeldoc.path or "",
+        )
+        config.babeldoc.path = path or None
+        if config.babeldoc.path:
+            click.echo(
+                "Run `ocr-flow runtime setup --path <checkout>` before translation; it resets that checkout to the tested profile."
+            )
+
+        font_family = click.prompt(
+            "BabelDOC primary font family",
+            type=click.Choice(['auto', *PRIMARY_FONT_FAMILIES]),
+            default=config.babeldoc.primary_font_family or 'auto',
+        )
+        config.babeldoc.primary_font_family = normalize_primary_font_family(
+            None if font_family == 'auto' else font_family
+        )
 
         # Ghostscript path
         click.echo(f"Current Ghostscript path: {config.compress.ghostscript_path or '(auto-detect)'}")

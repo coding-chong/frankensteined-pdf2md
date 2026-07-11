@@ -1,9 +1,11 @@
 README.md
 pyproject.toml
 ocr_flow/__init__.py
+ocr_flow/babeldoc_runtime.py
 ocr_flow/cli.py
 ocr_flow/config.py
 ocr_flow/pipeline.py
+ocr_flow/runtime.py
 ocr_flow/self_check.py
 ocr_flow/state.py
 ocr_flow.egg-info/PKG-INFO
@@ -12,6 +14,10 @@ ocr_flow.egg-info/dependency_links.txt
 ocr_flow.egg-info/entry_points.txt
 ocr_flow.egg-info/requires.txt
 ocr_flow.egg-info/top_level.txt
+ocr_flow/runtime_profiles/babeldoc-v0.6.3.json
+ocr_flow/runtime_profiles/babeldoc-v0.6.3.uv.lock
+ocr_flow/runtime_profiles/umiocr-paddle-v2.1.5.json
+ocr_flow/runtime_profiles/patches/babeldoc-v0.6.3-windows-directml.patch
 ocr_flow/steps/__init__.py
 ocr_flow/steps/compress.py
 ocr_flow/steps/format_fix.py
@@ -33,6 +39,10 @@ tests/test_image_download.py
 tests/test_mineru.py
 tests/test_ocr.py
 tests/test_pipeline.py
+tests/test_runtime.py
+tests/test_runtime_cli.py
+tests/test_runtime_profiles.py
 tests/test_self_check.py
 tests/test_split.py
 tests/test_state.py
+tests/test_translate.py

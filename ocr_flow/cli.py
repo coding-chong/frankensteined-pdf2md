@@ -4,6 +4,7 @@
 
 import sys
 import time
+import subprocess
 import click
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -303,6 +304,93 @@ def interactive_ask(is_batch: bool = False) -> dict:
 def cli():
     """OCR Flow - PDF to Markdown converter for chip manuals and datasheets."""
     pass
+
+
+@cli.group()
+def runtime():
+    """Manage the pinned BabelDOC Runtime Profiles."""
+    pass
+
+
+@runtime.command()
+@click.option(
+    '--profile',
+    type=click.Choice(['cpu-safe', 'windows-directml']),
+    default='cpu-safe',
+    show_default=True,
+)
+@click.option(
+    '--path',
+    'checkout_path',
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help='Destructively normalize this BabelDOC Git worktree instead of the managed runtime.',
+)
+def setup(profile: str, checkout_path: Optional[Path]):
+    """Acquire and install the tested BabelDOC Runtime Profile."""
+    from .babeldoc_runtime import (
+        bootstrap,
+        load_manifest,
+        reconcile_external_checkout,
+        reconcile_managed_checkout,
+    )
+
+    manifest = load_manifest()
+    try:
+        managed = checkout_path is None
+        checkout = (
+            reconcile_managed_checkout(manifest)
+            if managed
+            else reconcile_external_checkout(checkout_path, manifest)
+        )
+        bootstrap(checkout, manifest, profile, managed=managed)
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        raise click.ClickException(str(error)) from error
+
+
+@runtime.command()
+def status():
+    """Show local runtime readiness and the advisory upstream release status."""
+    from .babeldoc_runtime import load_manifest, status_lines
+
+    lines, _ = status_lines(load_manifest())
+    click.echo("\n".join(lines))
+
+
+@runtime.command()
+@click.option('--input', 'input_path', required=True, type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    '--profile',
+    type=click.Choice(['cpu-safe', 'windows-directml']),
+    default='cpu-safe',
+    show_default=True,
+)
+@click.option(
+    '--path',
+    'checkout_path',
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help='Smoke-test this previously normalized external BabelDOC worktree.',
+)
+def smoke(input_path: str, profile: str, checkout_path: Optional[Path]):
+    """Run local layout inference against a verified BabelDOC Runtime."""
+    from .babeldoc_runtime import load_manifest, smoke as smoke_runtime
+    from .runtime import (
+        MANAGED_BABELDOC_PATH,
+        external_runtime_readiness,
+        managed_runtime_readiness,
+    )
+
+    if checkout_path is None:
+        checkout = MANAGED_BABELDOC_PATH
+        ready, message = managed_runtime_readiness(profile)
+    else:
+        checkout = checkout_path.expanduser().resolve()
+        ready, message = external_runtime_readiness(checkout, profile)
+    if not ready:
+        raise click.ClickException(message)
+    try:
+        smoke_runtime(checkout, load_manifest(), profile, Path(input_path))
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        raise click.ClickException(str(error)) from error
 
 
 @cli.command()

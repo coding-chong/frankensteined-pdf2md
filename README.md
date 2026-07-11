@@ -2,6 +2,11 @@
 
 将 PDF 文档（芯片手册、数据手册）转换为 AI 可读的 Markdown 格式的命令行工具。
 
+For the complete runtime dependency map, branch behavior, output layout, and
+recovery model, see [Runtime Pipeline](docs/runtime-pipeline.md).
+Prepare BabelDOC and verify the automatically started UMI OCR runtime with
+[BabelDOC Runtime Profiles](docs/babeldoc-runtime-profiles.md).
+
 ## Quick Start
 
 ### 最短成功路径（文字版，不翻译）
@@ -99,7 +104,7 @@ ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanne
 2. **Ghostscript** - [下载地址](https://ghostscript.com/)
 3. **pythonnet**（Windows 必需）- 用于解决 MinerU CDN 下载时的 SSL 问题
 4. **UMI OCR**（可选，用于扫描版 PDF）- [下载地址](https://github.com/hiroi-sora/Umi-OCR/releases)
-5. **BabelDOC**（可选，用于翻译）- [安装指南](https://github.com/funstory-ai/BabelDOC)
+5. **BabelDOC**（可选，用于翻译）- 默认由 `ocr-flow runtime setup` 自动安装固定版本；已有 Git checkout 可显式归一化
 
 ### 安装 OCR Flow
 
@@ -141,9 +146,11 @@ ocr-flow config
 api_token = "你的-mineru-api-token"
 
 [babeldoc]
-path = "../BabelDOC"  # BabelDOC git 仓库路径（可选）
+# 留空使用项目托管运行时；已有 Git checkout 必须先运行 runtime setup --path 强制归一化。
+path = ""
 lang_in = "en-US"
 lang_out = "zh-CN"
+primary_font_family = ""  # 可选：serif、sans-serif、script；留空自动选择
 openai = true
 openai_model = "qwen3.5-flash"
 openai_base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -158,6 +165,59 @@ exe_path = "E:/umiocr/Umi-OCR.exe"  # 可选；用于 doctor --ocr --start-ocr �
 [compress]
 ghostscript_path = ""  # 留空则自动检测
 quality = "ebook"
+```
+
+### 外部运行时、加速、字体与 Ghostscript
+
+OCR Flow 固定使用经过验证的 BabelDOC `v0.6.3`。默认运行在项目自己的
+`.ocr-flow-runtime/BabelDOC`；不需要用户手改 BabelDOC 源码。已有 Git
+checkout 时，只有显式执行 `runtime setup --path` 才会把那一份 checkout
+强制回退到该版本并安装 profile。
+
+| 场景 | 命令 | 对 BabelDOC 源码和字体的影响 |
+|------|------|------------------------------|
+| 默认 CPU | `ocr-flow runtime setup` | 使用上游 CPU-safe 源码；不打补丁。 |
+| Windows DirectML | `ocr-flow runtime setup --profile windows-directml` | 仅给布局推理打 DirectML patch；字体选择和字体文件不变。 |
+| 已有 Git checkout | `ocr-flow runtime setup --path E:\work\BabelDOC` | **破坏性操作**：清理并 detached 回退到 v0.6.3；再按所选 profile 安装。 |
+| Ghostscript | 系统安装后运行 `ocr-flow doctor` 验证 | 外部 PDF 压缩器；不由 BabelDOC profile 安装、打补丁或管理。 |
+
+`primary_font_family` 是传给 BabelDOC 的公开“字体族偏好”，可选值为
+`serif`、`sans-serif`、`script`，留空则由 BabelDOC 按原文样式自动选择：
+
+```toml
+[babeldoc]
+primary_font_family = "sans-serif"
+```
+
+它不是指定某个字体文件或系统字体的开关。实际字体由 BabelDOC 根据输出
+语言、字重、斜体和缺字回退，从该版本 profile 自带的字体资产中映射。CPU
+和 DirectML 的区别只在 ONNX 布局推理 provider，不会改变字体映射或翻译
+PDF 的排版策略。
+
+若必须锁定某个具体字体文件或修改字体映射，不能直接编辑用户 checkout。
+这需要一个新的、版本化的 BabelDOC Runtime Profile，其中同时记录字体资产、
+映射变更、锁文件和翻译 PDF 验证结果。详细运行时约定见
+[BabelDOC Runtime Profiles](docs/babeldoc-runtime-profiles.md)。
+
+Ghostscript 是另一项外部系统依赖。OCR Flow 会优先使用
+`compress.ghostscript_path`，否则从 PATH 和 Windows 常见安装目录发现它；
+`ocr-flow runtime setup` 不会下载、替换或修改 Ghostscript。非翻译流程会用
+它压缩分段 PDF；翻译流程默认跳过 Ghostscript 以保留 BabelDOC 的字体子集化，
+只有显式传入 `--compress` 才启用压缩。它会影响压缩和字体嵌入策略，但不会决定
+翻译 PDF 使用哪一种字体。
+
+不要因为 Ghostscript 发布了新版本就直接把它当作兼容版本。升级前必须让 OCR
+Flow 用该可执行文件完成一次真实压缩，并确认输出 PDF 可打开、页数保持不变；
+下载成功、校验和或签名正确只能证明来源可信，不能证明兼容。Windows x64 的
+Ghostscript `10.07.1` 已通过这项验证：OCR Flow 对
+`test_page_text.pdf` 的实际压缩输出可由 PyMuPDF 打开，且输入和输出均为 1 页。
+它可通过显式 `ghostscript_path` 使用；现有 PATH 或配置中的旧版本不会被自动替换。
+
+```toml
+[compress]
+# 自动发现失败时，填写系统 Ghostscript 可执行文件的绝对路径。
+ghostscript_path = "C:/Program Files/gs/gs10.07.1/bin/gswin64c.exe"
+quality = "ebook"  # screen / ebook / printer / prepress
 ```
 
 ## 测试指南
@@ -484,16 +544,28 @@ python create_test_assets.py
 ### 找不到 UMI OCR
 
 1. 从 [GitHub](https://github.com/hiroi-sora/Umi-OCR/releases) 下载 UMI OCR
-2. 启动应用程序（会在 `127.0.0.1:1224` 运行 HTTP API）
+2. 放置到项目的 `umiocr_local` 后，扫描文档流程会自动启动它；可用 `ocr-flow doctor --ocr --start-ocr` 诊断
 
 ### 找不到 BabelDOC
 
 ```bash
-git clone https://github.com/funstory-ai/BabelDOC.git
-cd BabelDOC
-uv venv
-uv pip install -e .
+ocr-flow runtime setup
 ```
+
+该命令将经过测试的 BabelDOC 安装到项目的 `.ocr-flow-runtime/BabelDOC`。
+普通使用不需要克隆或修改 BabelDOC。Frank OCR 默认使用项目托管的
+v0.6.3。
+
+已有 BabelDOC Git checkout 时，可显式把它强制归一化到同一个版本：
+
+```bash
+ocr-flow runtime setup --path E:\work\BabelDOC
+```
+
+这个命令会丢弃该路径下已跟踪、已暂存、未暂存和未跟踪的修改，然后以
+detached HEAD 强制回退到 v0.6.3。CPU 默认不打补丁；仅 Windows DirectML
+profile 会在该固定版本上应用布局补丁。成功后将同一路径填入
+`babeldoc.path`；任意未归一化路径都会被拒绝，不会回退到全局 BabelDOC。
 
 ### 翻译后中文显示乱码
 
@@ -503,7 +575,10 @@ uv pip install -e .
 ocr-flow process input.pdf -o output/ --translate --compress -v
 ```
 
-此选项会禁用字体子集化以兼容 Ghostscript 压缩。
+默认翻译保留 BabelDOC 的字体子集化。`--compress` 会让 BabelDOC 跳过字体
+子集化，再交给 Ghostscript 压缩；这是为避免部分中文字体在压缩后乱码，而不
+是更换字体。若问题是缺字或必须使用指定字体，请使用上面的字体族偏好；精确
+字体映射则需要新的版本化 Runtime Profile。
 
 ## 许可证
 

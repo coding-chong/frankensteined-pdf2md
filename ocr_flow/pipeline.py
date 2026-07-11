@@ -18,6 +18,10 @@ from .steps.image_download import download_images
 from .utils.graceful_exit import GracefulExitContext
 
 
+class AllMinerUSegmentsFailedError(RuntimeError):
+    """Raised when MinerU does not produce Markdown for any requested segment."""
+
+
 class Pipeline:
     """Main processing pipeline."""
 
@@ -390,10 +394,27 @@ class Pipeline:
 
                 completed = sorted(set(completed))
                 if failed:
-                    state.update_step("mineru", status="partial", completed=completed, failed=failed)
+                    error = None
+                    if not completed:
+                        error = (
+                            "MinerU conversion did not produce any Markdown segments. "
+                            "Recovery state was saved; resolve the failed MinerU requests "
+                            "and retry this run."
+                        )
+                    state.update_step(
+                        "mineru",
+                        status="partial",
+                        completed=completed,
+                        failed=failed,
+                        error=error,
+                    )
                 else:
                     state.update_step("mineru", status="completed", completed=completed, failed={})
                 self.state_manager.save()
+
+                if failed and not completed:
+                    self.logger.error(error)
+                    raise AllMinerUSegmentsFailedError(error)
 
                 # Step 6: Format fix
                 msg = "[6/7] Fixing Markdown format"
@@ -472,6 +493,9 @@ class Pipeline:
                 # GracefulExit should have saved state
                 if self.logger:
                     self.logger.info("Pipeline interrupted by user")
+                raise
+            except AllMinerUSegmentsFailedError:
+                # The partial MinerU state was saved before raising for recovery.
                 raise
             except Exception as e:
                 state.update_step(state.current_step or "unknown", status="failed", error=str(e))

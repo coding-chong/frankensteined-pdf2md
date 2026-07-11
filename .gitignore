@@ -39,6 +39,12 @@ htmlcov/
 # Output directories
 output/
 test_output/
+.ocr-flow-runtime/
+
+# Local credentials and vendor runtimes are verified by manifests, not tracked.
+API_KEYS.md
+new_mineru_token.txt
+umiocr_local/
 
 # Lock files (optional - uncomment if you want to track)
 # uv.lock

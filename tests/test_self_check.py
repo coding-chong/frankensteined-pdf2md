@@ -313,55 +313,65 @@ class TestCheckUmiOcr:
 class TestCheckBabeldoc:
     """Tests for check_babeldoc method."""
 
-    def test_check_babeldoc_global(self, mock_config, monkeypatch):
-        """Test globally installed BabelDOC."""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "babeldoc 1.0.0"
-        monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: mock_result)
+    def test_check_babeldoc_managed_runtime(self, mock_config, monkeypatch):
+        """Test the managed runtime is the default when no override is set."""
+        monkeypatch.setattr(
+            'ocr_flow.self_check.runtime_readiness',
+            lambda _runtime: (True, 'Managed BabelDOC Runtime ready at C:/runtime/BabelDOC'),
+        )
 
         checker = SelfCheck(config=mock_config)
         result = checker.check_babeldoc()
 
-        assert result['ok'] == True
-        assert 'installed' in result['message'].lower()
+        assert result['ok']
+        assert 'Managed BabelDOC Runtime ready' in result['message']
 
-    def test_check_babeldoc_not_found(self, mock_config, monkeypatch):
-        """Test BabelDOC not found."""
-        def raise_not_found(*args, **kwargs):
-            raise FileNotFoundError()
-
-        monkeypatch.setattr(subprocess, 'run', raise_not_found)
+    def test_check_babeldoc_managed_runtime_not_setup(self, mock_config, monkeypatch):
+        """Test setup guidance when the managed runtime is absent."""
+        monkeypatch.setattr(
+            'ocr_flow.self_check.runtime_readiness',
+            lambda _runtime: (False, 'Managed BabelDOC Runtime is not installed. Run `ocr-flow runtime setup`.'),
+        )
 
         checker = SelfCheck(config=mock_config)
         result = checker.check_babeldoc()
 
-        assert result['ok'] == False
-        assert 'Not found' in result['message']
+        assert not result['ok']
+        assert 'runtime setup' in result['message']
+        assert result['next_step'] == 'ocr-flow runtime setup'
 
-    def test_check_babeldoc_local_path_exists(self, temp_dir):
-        """Test BabelDOC at local path."""
+    def test_check_babeldoc_verified_external_path(self, temp_dir, monkeypatch):
+        """Test a configured external checkout is accepted after setup."""
         babeldoc_path = temp_dir / "babeldoc"
         babeldoc_path.mkdir()
 
         config = Config()
         config.babeldoc.path = str(babeldoc_path)
+        monkeypatch.setattr(
+            'ocr_flow.self_check.runtime_readiness',
+            lambda runtime: (True, f'Configured BabelDOC Runtime ready at {runtime.checkout}'),
+        )
 
         checker = SelfCheck(config=config)
         result = checker.check_babeldoc()
 
-        assert result['ok'] == True
+        assert result['ok']
+        assert 'Configured BabelDOC Runtime ready' in result['message']
 
-    def test_check_babeldoc_local_path_not_exists(self, temp_dir):
-        """Test BabelDOC at non-existent local path."""
+    def test_check_babeldoc_unverified_external_path_has_setup_guidance(self, temp_dir, monkeypatch):
+        """An unverified external checkout must be explicitly normalized."""
         config = Config()
-        config.babeldoc.path = str(temp_dir / "nonexistent")
+        config.babeldoc.path = str(temp_dir / "babeldoc")
+        monkeypatch.setattr(
+            'ocr_flow.self_check.runtime_readiness',
+            lambda _runtime: (False, 'Configured BabelDOC Runtime has not completed profile setup.'),
+        )
 
         checker = SelfCheck(config=config)
         result = checker.check_babeldoc()
 
-        assert result['ok'] == False
-        assert 'not found' in result['message'].lower()
+        assert not result['ok']
+        assert result['next_step'].startswith('ocr-flow runtime setup --path')
 
 
 # =============================================================================
@@ -404,6 +414,7 @@ class TestFindUmiOcr:
 
     def test_find_in_path(self, monkeypatch):
         """Test finding UMI OCR in PATH."""
+        monkeypatch.setattr('ocr_flow.self_check._iter_local_umi_dirs', lambda: [])
         monkeypatch.setattr(shutil, 'which', lambda name: '/usr/bin/umi-ocr' if name == 'umi-ocr' else None)
 
         result = find_umi_ocr()

@@ -7,9 +7,11 @@ import shutil
 import os
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 
 import requests
+
+from .runtime import resolve_babeldoc_runtime, runtime_readiness
 
 
 def create_local_umi_session() -> requests.Session:
@@ -17,6 +19,59 @@ def create_local_umi_session() -> requests.Session:
     session = requests.Session()
     session.trust_env = False
     return session
+
+
+def _candidate_umi_roots() -> List[Path]:
+    """Return candidate roots that may contain a local UMI OCR copy."""
+    module_dir = Path(__file__).resolve().parent
+    project_root = module_dir.parent
+    workspace_root = project_root.parent
+    return [project_root, workspace_root]
+
+
+def _iter_local_umi_dirs() -> List[Path]:
+    """Return candidate local UMI OCR directories under known roots."""
+    candidates: List[Path] = []
+    for root in _candidate_umi_roots():
+        if not root.exists():
+            continue
+
+        direct_exe = root / 'Umi-OCR.exe'
+        if direct_exe.exists():
+            candidates.append(root)
+
+        for item in root.iterdir():
+            if not item.is_dir():
+                continue
+            name = item.name.lower()
+            if 'umi' in name and 'ocr' in name:
+                candidates.append(item)
+
+    # Preserve order while deduplicating
+    unique: List[Path] = []
+    seen = set()
+    for candidate in candidates:
+        resolved = str(candidate.resolve())
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(candidate)
+    return unique
+
+
+def resolve_umi_launch_command(umi_path: str) -> Tuple[List[str], Optional[str]]:
+    """Resolve the best command and cwd for starting UMI OCR."""
+    umi_exe = Path(umi_path)
+
+    # Prefer the bundled runtime launcher when available. It avoids startup
+    # issues we observed from direct Umi-OCR.exe launches on Windows.
+    umi_data_dir = umi_exe.parent / 'UmiOCR-data'
+    runtime_python = umi_data_dir / 'runtime' / 'python.exe'
+    main_py = umi_data_dir / 'main.py'
+    if runtime_python.exists() and main_py.exists():
+        return [str(runtime_python), str(main_py.name)], str(umi_data_dir)
+
+    return [str(umi_exe)], str(umi_exe.parent)
 
 
 class SelfCheck:
@@ -142,38 +197,19 @@ class SelfCheck:
             return {'ok': False, 'message': f'Check failed: {e}'}
 
     def check_babeldoc(self) -> Dict[str, Any]:
-        """Check if BabelDOC is available."""
-        if self.config and self.config.babeldoc.path:
-            # Check path exists
-            babel_path = Path(self.config.babeldoc.path)
-            if babel_path.exists():
-                return {'ok': True, 'message': f'Found at {babel_path}'}
-            else:
-                return {
-                    'ok': False,
-                    'message': f'Path not found: {babel_path}',
-                    'next_step': 'ocr-flow config',
-                }
+        """Check that the selected BabelDOC Runtime Profile is ready."""
+        runtime = resolve_babeldoc_runtime(self.config)
+        ready, message = runtime_readiness(runtime)
+        if ready:
+            return {'ok': True, 'message': message}
 
-        # Check global install
-        try:
-            result = subprocess.run(
-                ['babeldoc', '--version'],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            if result.returncode == 0:
-                return {'ok': True, 'message': 'Globally installed'}
-        except FileNotFoundError:
-            pass
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
-            pass  # Other subprocess errors, babeldoc check failed
-
+        next_step = 'ocr-flow runtime setup'
+        if not runtime.managed:
+            next_step = f'ocr-flow runtime setup --path {runtime.checkout}'
         return {
             'ok': False,
-            'message': 'Not found. Install with: pip install BabelDOC or clone and use path config',
-            'next_step': 'ocr-flow config',
+            'message': message,
+            'next_step': next_step,
         }
 
 
@@ -183,6 +219,12 @@ def find_umi_ocr(config=None) -> Optional[str]:
     Returns:
         Path to UMI OCR executable or None if not found.
     """
+    # Check project-local UMI OCR copies first.
+    for item in _iter_local_umi_dirs():
+        exe = item / 'Umi-OCR.exe'
+        if exe.exists():
+            return str(exe)
+
     if config and getattr(config, 'umiocr', None) and config.umiocr.exe_path:
         exe_path = Path(config.umiocr.exe_path)
         if exe_path.exists():
@@ -196,17 +238,6 @@ def find_umi_ocr(config=None) -> Optional[str]:
         path = shutil.which(name)
         if path:
             return path
-
-    # Check project-local umiocr directory (relative to this file)
-    project_root = Path(__file__).parent.parent.parent  # Go up to project root
-    local_umiocr_dir = project_root / 'umiocr'
-    if local_umiocr_dir.exists():
-        # Search for UMI OCR installations in local directory
-        for item in local_umiocr_dir.iterdir():
-            if item.is_dir() and 'umi' in item.name.lower():
-                exe = item / 'Umi-OCR.exe'
-                if exe.exists():
-                    return str(exe)
 
     # Check common install locations on Windows
     if os.name == 'nt':
@@ -262,18 +293,22 @@ def start_umi_ocr(config=None) -> Dict[str, Any]:
         }
 
     try:
+        command, cwd = resolve_umi_launch_command(umi_path)
+
         # Start UMI OCR in background
         if os.name == 'nt':
             # On Windows, use DETACHED_PROCESS to run in background
             subprocess.Popen(
-                [umi_path],
+                command,
+                cwd=cwd,
                 creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
         else:
             subprocess.Popen(
-                [umi_path],
+                command,
+                cwd=cwd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True

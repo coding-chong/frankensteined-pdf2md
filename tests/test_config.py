@@ -23,6 +23,7 @@ from ocr_flow.config import (
     CompressConfig,
     MinerUConfig,
     PostProcessConfig,
+    normalize_primary_font_family,
 )
 
 
@@ -124,6 +125,13 @@ class TestBabelDocConfig:
         """Test custom BabelDOC path."""
         config = BabelDocConfig(path="/path/to/babeldoc")
         assert config.path == "/path/to/babeldoc"
+
+    def test_babeldoc_primary_font_family_defaults_to_automatic(self):
+        assert BabelDocConfig().primary_font_family is None
+
+    def test_babeldoc_primary_font_family_rejects_unknown_value(self):
+        with pytest.raises(ValueError, match="primary_font_family"):
+            normalize_primary_font_family("Source Han Serif")
 
 
 # =============================================================================
@@ -256,6 +264,7 @@ class TestConfig:
         original.verbose = True
         original.mineru.api_token = "test-token"
         original.compress.quality = "printer"
+        original.babeldoc.primary_font_family = "sans-serif"
 
         config_path = temp_dir / "config.toml"
         original.save(config_path)
@@ -267,6 +276,7 @@ class TestConfig:
         assert loaded.verbose == True
         assert loaded.mineru.api_token == "test-token"
         assert loaded.compress.quality == "printer"
+        assert loaded.babeldoc.primary_font_family == "sans-serif"
 
     def test_config_save_creates_directory(self, temp_dir):
         """Test that save creates parent directories."""
@@ -345,6 +355,7 @@ openai = true
 openai_model = "gpt-4"
 openai_base_url = "https://api.openai.com/v1"
 openai_api_key = "sk-key"
+primary_font_family = "serif"
 
 [compress]
 ghostscript_path = "/usr/bin/gs"
@@ -372,6 +383,7 @@ download_images = false
         assert config.babeldoc.path == "/path/to/babeldoc"
         assert config.babeldoc.lang_in == "ja-JP"
         assert config.babeldoc.openai_model == "gpt-4"
+        assert config.babeldoc.primary_font_family == "serif"
         assert config.compress.ghostscript_path == "/usr/bin/gs"
         assert config.compress.quality == "screen"
         assert config.mineru.api_token == "mineru-token"
@@ -437,6 +449,43 @@ class TestConfigValidation:
         for key in keys:
             config.openai_api_key = key
             assert config.openai_api_key == key
+
+
+class TestInteractiveConfig:
+    """Tests for configuration-wizard runtime selection behavior."""
+
+    def test_configure_interactive_preserves_external_babeldoc_checkout(
+        self, monkeypatch
+    ):
+        config = Config()
+        config.babeldoc.path = "C:/work/BabelDOC"
+        responses = iter(
+            [
+                config.mineru.api_token,
+                config.babeldoc.openai_api_key,
+                config.babeldoc.openai_base_url,
+                config.babeldoc.path,
+                "auto",
+                "",
+                "",
+            ]
+        )
+        saved = []
+
+        monkeypatch.setattr(
+            Config, "load", classmethod(lambda cls: config)
+        )
+        monkeypatch.setattr(
+            Config, "save", lambda self: saved.append(self)
+        )
+        monkeypatch.setattr(
+            "ocr_flow.config.click.prompt", lambda *_args, **_kwargs: next(responses)
+        )
+
+        Config.configure_interactive()
+
+        assert saved == [config]
+        assert config.babeldoc.path == "C:/work/BabelDOC"
 
 
 # =============================================================================

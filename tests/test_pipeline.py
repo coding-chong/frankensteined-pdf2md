@@ -478,6 +478,50 @@ class TestPipelineRecovery:
 class TestPipelineErrorHandling:
     """Tests for error handling."""
 
+    @patch('ocr_flow.pipeline.download_images')
+    @patch('ocr_flow.pipeline.format_fix')
+    @patch('ocr_flow.pipeline.MinerUClient')
+    @patch('ocr_flow.pipeline.compress_pdf')
+    @patch('ocr_flow.pipeline.split_pdf')
+    def test_all_mineru_failures_preserve_recovery_state_and_stop_pipeline(
+        self,
+        mock_split,
+        mock_compress,
+        mock_mineru,
+        mock_format,
+        mock_download,
+        mock_config,
+        text_pdf,
+        output_dir,
+    ):
+        """A fully failed MinerU run must remain retryable and not report success."""
+        split_file = output_dir / "part_001.pdf"
+        compressed_file = output_dir / "compressed_part_001.pdf"
+        split_file.write_bytes(b"%PDF")
+        compressed_file.write_bytes(b"%PDF")
+        mock_split.return_value = [split_file]
+        mock_compress.return_value = compressed_file
+
+        mock_mineru_instance = MagicMock()
+        mock_mineru_instance.convert.side_effect = RuntimeError("MinerU CDN unavailable")
+        mock_mineru.return_value = mock_mineru_instance
+
+        pipeline = Pipeline(config=mock_config)
+
+        with pytest.raises(RuntimeError, match="did not produce any Markdown segments"):
+            pipeline.run(text_pdf, output_dir, pdf_type="text")
+
+        state_paths = list(output_dir.rglob(".state.json"))
+        assert len(state_paths) == 1
+        saved_state = State.load(state_paths[0])
+        mineru_step = saved_state.get_step_status("mineru")
+        assert mineru_step.status == "partial"
+        assert mineru_step.completed == []
+        assert mineru_step.failed == {"1": "MinerU CDN unavailable"}
+        assert mineru_step.error is not None
+        mock_format.assert_not_called()
+        mock_download.assert_not_called()
+
     def test_handles_split_failure(self, mock_config, text_pdf, output_dir):
         """Test handling of split failure."""
         with patch('ocr_flow.pipeline.split_pdf') as mock_split:
