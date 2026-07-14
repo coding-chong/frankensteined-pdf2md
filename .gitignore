@@ -46,6 +46,9 @@ API_KEYS.md
 new_mineru_token.txt
 umiocr_local/
 
+# Local assistant configuration is not part of the repository contract.
+CLAUDE.md
+
 # Lock files (optional - uncomment if you want to track)
 # uv.lock
 

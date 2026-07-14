@@ -23,10 +23,11 @@ Requires-Dist: pythonnet>=3.0.0; extra == "windows"
 
 将 PDF 文档（芯片手册、数据手册）转换为 AI 可读的 Markdown 格式的命令行工具。
 
-For the complete runtime dependency map, branch behavior, output layout, and
-recovery model, see [Runtime Pipeline](docs/runtime-pipeline.md).
-Prepare BabelDOC and verify the automatically started UMI OCR runtime with
-[BabelDOC Runtime Profiles](docs/babeldoc-runtime-profiles.md).
+## 文档导航
+
+- [Runtime Pipeline](docs/runtime-pipeline.md)：依赖关系、输出结构和恢复行为。
+- [BabelDOC Runtime Profiles](docs/babeldoc-runtime-profiles.md)：托管翻译运行时、字体和 DirectML。
+- [Complex PDF Live Matrix](docs/complex-pdf-live-matrix.md)：公式、OCR、翻译和压缩的发布/CI 验收。
 
 ## Quick Start
 
@@ -51,7 +52,7 @@ ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type scanne
   ocr-flow process <input.pdf> -o <output_dir> -v
   ```
 
-- **Non-interactive mode**：已知参数、要批处理、或希望 AI 直接执行完整命令时使用
+- **Non-interactive mode**：已知参数或要批处理时使用
 
   ```bash
   ocr-flow process <input.pdf> -o <output_dir> --non-interactive --pdf-type text --lang en --no-translate -v
@@ -199,7 +200,7 @@ checkout 时，只有显式执行 `runtime setup --path` 才会把那一份 chec
 |------|------|------------------------------|
 | 默认 CPU | `ocr-flow runtime setup` | 使用上游 CPU-safe 源码；不打补丁。 |
 | Windows DirectML | `ocr-flow runtime setup --profile windows-directml` | 仅给布局推理打 DirectML patch；字体选择和字体文件不变。 |
-| 已有 Git checkout | `ocr-flow runtime setup --path E:\work\BabelDOC` | **破坏性操作**：清理并 detached 回退到 v0.6.3；再按所选 profile 安装。 |
+| 已有 Git checkout | `ocr-flow runtime setup --path <babeldoc-checkout>` | **破坏性操作**：清理并 detached 回退到 v0.6.3；再按所选 profile 安装。 |
 | Ghostscript | 系统安装后运行 `ocr-flow doctor` 验证 | 外部 PDF 压缩器；不由 BabelDOC profile 安装、打补丁或管理。 |
 
 `primary_font_family` 是传给 BabelDOC 的公开“字体族偏好”，可选值为
@@ -254,6 +255,8 @@ quality = "ebook"  # screen / ebook / printer / prepress
 | `test_page_text.pdf` | 1.3KB | 文字版，1页 | 快速验证 | 30秒内完成 |
 | `test_page_scanned.pdf` | 31KB | 扫描版，1页 | OCR快速验证 | 需 UMI OCR |
 | `stress_test_10pages.pdf` | 1.4MB | 文字版，10页 | 压力测试 | 大文件测试 |
+| `4_gs_prepress_300dpi.pdf` | 1.7MB | 文字版，6页 | 公式/电路/图表/表格回归 | 严格 live matrix |
+| `4_gs_prepress_300dpi_scanned_300dpi.pdf` | 7.3MB | 扫描版，6页 | UMI OCR + 公式视觉回归 | 严格 live matrix |
 
 ### 快速测试命令
 
@@ -297,6 +300,35 @@ ocr-flow process test_assets/true_text_test.pdf -o test_output/ \
 ```
 
 注意：需先配置翻译 API（运行 `ocr-flow config`）。
+
+### 严格复杂 PDF Live Matrix（发布/CI 验收）
+
+`4_gs_prepress_300dpi.pdf` 及其 300 DPI 扫描版用于真实端到端回归。它不会
+使用模拟的 UMI OCR、BabelDOC、翻译 API、Ghostscript 或 MinerU；每个 profile 都会
+实际消耗 24 个 MinerU 分段转换和 2 次翻译请求。缺少凭据或任何运行时依赖会失败，
+不会跳过。
+
+先做不消耗 API 的资产校验：
+
+```powershell
+uv run python scripts/generate_complex_pdf_scan.py --verify
+uv run pytest tests/test_complex_pdf_assets.py -v
+```
+
+再运行 CPU-safe 的真实矩阵：
+
+```powershell
+uv run python scripts/run_live_complex_pdf_matrix.py `
+  --config "$env:USERPROFILE\.ocr-flow\config.toml" `
+  --ghostscript "C:\path\to\gswin64c.exe" `
+  --profile cpu-safe
+```
+
+Windows 上应在 release/CI 验收中使用 `--all-profiles` 同时验证 CPU-safe 与
+DirectML。输出位于 `output/live_complex_pdf_matrix/`，包含状态、PDF、Markdown
+和公式/OCR/翻译页面渲染图。验收时必须查看渲染图，确认公式可见、中文字体正常、
+版面无重叠、扫描件 OCR 有文字层。完整命令和验收标准见
+[Complex PDF Live Matrix](docs/complex-pdf-live-matrix.md)。
 
 ### 非交互模式必需参数
 
@@ -498,7 +530,7 @@ output/
         │   ├── images/
         │   └── compressed_pdfs/
         ├── ocr-flow.log         # 处理日志
-        └── titles_guide.md      # 标题生成指南（给 Claude Code 使用）
+        └── titles_guide.md      # 可选的标题审阅辅助文件
 ```
 
 ## 更新日志
@@ -580,7 +612,7 @@ v0.6.3。
 已有 BabelDOC Git checkout 时，可显式把它强制归一化到同一个版本：
 
 ```bash
-ocr-flow runtime setup --path E:\work\BabelDOC
+ocr-flow runtime setup --path <babeldoc-checkout>
 ```
 
 这个命令会丢弃该路径下已跟踪、已暂存、未暂存和未跟踪的修改，然后以
