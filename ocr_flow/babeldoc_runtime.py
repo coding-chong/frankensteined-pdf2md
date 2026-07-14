@@ -154,6 +154,10 @@ def verify_checkout(
             f"found {actual_revision}",
         )
 
+    common_patch_error = _common_patch_error(checkout, manifest)
+    if common_patch_error:
+        return False, common_patch_error
+
     state = provider_file_state(checkout, manifest)
     if profile == "cpu-safe":
         if state != "upstream":
@@ -180,6 +184,59 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest().upper()
+
+
+def common_patch_paths(manifest: Dict[str, Any]) -> tuple[tuple[str, Path], ...]:
+    """Resolve and checksum-verify patches required by every runtime profile."""
+    entries = manifest.get("common_patches", [])
+    if not isinstance(entries, list):
+        raise RuntimeError("BabelDOC common_patches manifest entry must be a list")
+
+    patches = []
+    seen_ids = set()
+    profile_root = PROFILE_ROOT.resolve()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise RuntimeError("BabelDOC common patch entry must be an object")
+        patch_id = entry.get("id")
+        relative_path = entry.get("path")
+        expected_hash = entry.get("sha256")
+        if (
+            not isinstance(patch_id, str)
+            or not patch_id
+            or not isinstance(relative_path, str)
+            or not relative_path
+            or not isinstance(expected_hash, str)
+            or not expected_hash
+        ):
+            raise RuntimeError("BabelDOC common patch entry is incomplete")
+        if patch_id in seen_ids:
+            raise RuntimeError(f"BabelDOC common patch id is duplicated: {patch_id}")
+
+        patch = (PROFILE_ROOT / relative_path).resolve()
+        if not patch.is_relative_to(profile_root):
+            raise RuntimeError(f"BabelDOC common patch escapes profile assets: {relative_path}")
+        if not patch.is_file() or _sha256(patch) != expected_hash.upper():
+            raise RuntimeError(f"BabelDOC common patch is missing or corrupt: {patch}")
+        seen_ids.add(patch_id)
+        patches.append((patch_id, patch))
+    return tuple(patches)
+
+
+def _common_patch_error(
+    checkout: Path, manifest: Dict[str, Any], *, require_applied: bool = False
+) -> Optional[str]:
+    """Describe incompatible or missing required common patches."""
+    missing = []
+    for patch_id, patch in common_patch_paths(manifest):
+        state = patch_state(checkout, patch)
+        if state == "incompatible":
+            return f"Required BabelDOC patch does not match this checkout: {patch_id}"
+        if require_applied and state != "applied":
+            missing.append(patch_id)
+    if missing:
+        return "Required BabelDOC patch is not applied: " + ", ".join(missing)
+    return None
 
 
 def ensure_profile_lock(checkout: Path, manifest: Dict[str, Any]) -> None:
@@ -375,13 +432,24 @@ def bootstrap(
     *,
     managed: Optional[bool] = None,
 ) -> None:
-    """Install a verified profile and apply only its declared optional patch."""
+    """Install a verified profile and apply its required source patches."""
     if profile == "windows-directml" and os.name != "nt":
         raise RuntimeError("windows-directml is supported only on Windows")
 
     valid, message = verify_checkout(checkout, manifest, profile)
     if not valid:
         raise RuntimeError(message)
+
+    applied_common_patches = []
+    for patch_id, common_patch in common_patch_paths(manifest):
+        if patch_state(checkout, common_patch) == "applicable":
+            subprocess.run(
+                ["git", "apply", str(common_patch)],
+                cwd=checkout,
+                check=True,
+                env=_runtime_environment(),
+            )
+            applied_common_patches.append(patch_id)
 
     patch = profile_patch_path(manifest, profile)
     patch_needed = patch and provider_file_state(checkout, manifest) == "upstream"
@@ -431,6 +499,11 @@ def bootstrap(
             env=_runtime_environment(),
         )
         message = "Windows DirectML layout patch is applied"
+    if applied_common_patches:
+        message = (
+            f"{message}; applied required BabelDOC patches: "
+            + ", ".join(applied_common_patches)
+        )
     if managed is not None:
         _record_runtime_setup(checkout, manifest, profile, managed=managed)
     print(f"Installed {profile}: {message}")
@@ -448,6 +521,12 @@ def installed_checkout_readiness(
     if not lock_ready:
         return False, lock_message
 
+    common_patch_error = _common_patch_error(
+        checkout, manifest, require_applied=True
+    )
+    if common_patch_error:
+        return False, common_patch_error
+
     if profile == "windows-directml" and provider_file_state(checkout, manifest) != "directml":
         return False, "Windows DirectML layout patch is not applied"
     return True, message
@@ -457,7 +536,7 @@ def smoke(
     checkout: Path, manifest: Dict[str, Any], profile: str, input_path: Path
 ) -> None:
     """Run local layout inference without invoking a translation API."""
-    valid, message = verify_checkout(checkout, manifest, profile)
+    valid, message = installed_checkout_readiness(checkout, manifest, profile)
     if not valid:
         raise RuntimeError(message)
     if not input_path.is_file():

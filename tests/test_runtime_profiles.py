@@ -58,6 +58,63 @@ def test_babeldoc_manifest_lock_matches_checked_in_profile_lock():
     assert hashlib.sha256(lock_path.read_bytes()).hexdigest().upper() == manifest["lock"]["sha256"]
 
 
+def test_babeldoc_manifest_declares_a_checksum_verified_common_patch():
+    manifest = babeldoc_runtime.load_manifest()
+
+    patches = manifest["common_patches"]
+    assert len(patches) == 1
+    patch_id, patch_path = managed_runtime.common_patch_paths(manifest)[0]
+    assert patch_id == patches[0]["id"]
+    assert patch_path.is_file()
+    assert hashlib.sha256(patch_path.read_bytes()).hexdigest().upper() == patches[0]["sha256"]
+
+
+def test_common_ocr_patch_keeps_captions_translatable():
+    manifest = babeldoc_runtime.load_manifest()
+    _patch_id, patch_path = managed_runtime.common_patch_paths(manifest)[0]
+    patch = patch_path.read_text(encoding="utf-8")
+
+    assert '+            in {"figure", "table"}' in patch
+    assert '+                    "figure_caption",' in patch
+    assert '+                    "table_caption",' in patch
+
+
+def test_common_patch_manifest_rejects_a_corrupt_asset(monkeypatch, tmp_path):
+    patch = tmp_path / "common.patch"
+    patch.write_text("patch", encoding="utf-8")
+    monkeypatch.setattr(managed_runtime, "PROFILE_ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match="missing or corrupt"):
+        managed_runtime.common_patch_paths(
+            {
+                "common_patches": [
+                    {"id": "common", "path": "common.patch", "sha256": "0" * 64}
+                ]
+            }
+        )
+
+
+def test_common_patch_manifest_rejects_a_path_outside_profile_assets(
+    monkeypatch, tmp_path
+):
+    outside = tmp_path.parent / "outside.patch"
+    outside.write_text("patch", encoding="utf-8")
+    monkeypatch.setattr(managed_runtime, "PROFILE_ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match="escapes profile assets"):
+        managed_runtime.common_patch_paths(
+            {
+                "common_patches": [
+                    {
+                        "id": "common",
+                        "path": "../outside.patch",
+                        "sha256": hashlib.sha256(outside.read_bytes()).hexdigest(),
+                    }
+                ]
+            }
+        )
+
+
 def test_profile_lock_readiness_rejects_a_changed_external_lock(tmp_path):
     manifest = managed_runtime.load_manifest()
     checkout = tmp_path / "external-babeldoc"
@@ -303,6 +360,56 @@ def test_installed_checkout_requires_the_directml_patch_after_setup(monkeypatch,
     assert message == "Windows DirectML layout patch is not applied"
 
 
+def test_installed_checkout_rejects_a_common_patch_that_is_only_applicable(
+    monkeypatch, tmp_path
+):
+    manifest = {"common_patches": [{"id": "ocr-workaround"}]}
+    monkeypatch.setattr(
+        managed_runtime, "verify_checkout", lambda *_args: (True, "verified")
+    )
+    monkeypatch.setattr(
+        managed_runtime, "profile_lock_readiness", lambda *_args: (True, "lock verified")
+    )
+    monkeypatch.setattr(
+        managed_runtime,
+        "common_patch_paths",
+        lambda _manifest: [("ocr-workaround", tmp_path / "ocr-workaround.patch")],
+    )
+    monkeypatch.setattr(managed_runtime, "patch_state", lambda *_args: "applicable")
+
+    ready, message = managed_runtime.installed_checkout_readiness(
+        tmp_path, manifest, "cpu-safe"
+    )
+
+    assert not ready
+    assert message == "Required BabelDOC patch is not applied: ocr-workaround"
+
+
+def test_installed_checkout_rejects_an_incompatible_common_patch(
+    monkeypatch, tmp_path
+):
+    manifest = {"common_patches": [{"id": "ocr-workaround"}]}
+    monkeypatch.setattr(
+        managed_runtime, "verify_checkout", lambda *_args: (True, "verified")
+    )
+    monkeypatch.setattr(
+        managed_runtime, "profile_lock_readiness", lambda *_args: (True, "lock verified")
+    )
+    monkeypatch.setattr(
+        managed_runtime,
+        "common_patch_paths",
+        lambda _manifest: [("ocr-workaround", tmp_path / "ocr-workaround.patch")],
+    )
+    monkeypatch.setattr(managed_runtime, "patch_state", lambda *_args: "incompatible")
+
+    ready, message = managed_runtime.installed_checkout_readiness(
+        tmp_path, manifest, "cpu-safe"
+    )
+
+    assert not ready
+    assert message == "Required BabelDOC patch does not match this checkout: ocr-workaround"
+
+
 def test_bootstrap_records_the_verified_external_checkout(monkeypatch, tmp_path):
     checkout = tmp_path / "external-babeldoc"
     checkout.mkdir()
@@ -313,6 +420,7 @@ def test_bootstrap_records_the_verified_external_checkout(monkeypatch, tmp_path)
     monkeypatch.setattr(managed_runtime, "RUNTIME_ROOT", runtime_root)
     monkeypatch.setattr(managed_runtime, "MANAGED_RUNTIME_STATE_PATH", state_path)
     monkeypatch.setattr(managed_runtime, "verify_checkout", lambda *_args: (True, "verified"))
+    monkeypatch.setattr(managed_runtime, "common_patch_paths", lambda _manifest: ())
     monkeypatch.setattr(managed_runtime, "ensure_profile_lock", lambda *_args: None)
     monkeypatch.setattr(managed_runtime.subprocess, "run", lambda *_args, **_kwargs: None)
 
@@ -326,6 +434,43 @@ def test_bootstrap_records_the_verified_external_checkout(monkeypatch, tmp_path)
         "checkout": str(checkout.resolve()),
         "managed": False,
     }
+
+
+def test_bootstrap_applies_an_applicable_common_patch(monkeypatch, tmp_path):
+    checkout = tmp_path / "external-babeldoc"
+    checkout.mkdir()
+    patch = tmp_path / "ocr-workaround.patch"
+    patch.write_text("patch", encoding="utf-8")
+    commands = []
+    manifest = {
+        "common_patches": [{"id": "ocr-workaround"}],
+        "profiles": {
+            "cpu-safe": {
+                "extra": None,
+                "reinstall_packages": [],
+                "post_sync_packages": [],
+            }
+        },
+    }
+
+    monkeypatch.setattr(managed_runtime, "verify_checkout", lambda *_args: (True, "verified"))
+    monkeypatch.setattr(
+        managed_runtime,
+        "common_patch_paths",
+        lambda _manifest: [("ocr-workaround", patch)],
+    )
+    monkeypatch.setattr(managed_runtime, "patch_state", lambda *_args: "applicable")
+    monkeypatch.setattr(managed_runtime, "profile_patch_path", lambda *_args: None)
+    monkeypatch.setattr(managed_runtime, "ensure_profile_lock", lambda *_args: None)
+    monkeypatch.setattr(
+        managed_runtime.subprocess,
+        "run",
+        lambda command, **_kwargs: commands.append(command),
+    )
+
+    managed_runtime.bootstrap(checkout, manifest, "cpu-safe")
+
+    assert ["git", "apply", str(patch)] in commands
 
 
 @pytest.mark.skipif(os.name != "nt", reason="DirectML profile is Windows-only")

@@ -39,6 +39,11 @@ windows = [
 where = ["."]
 include = ["ocr_flow*"]
 
+[tool.pytest.ini_options]
+markers = [
+    "live: makes real UMI OCR, MinerU, and translation API requests",
+]
+
 [tool.setuptools.package-data]
 ocr_flow = [
     "runtime_profiles/*.json",

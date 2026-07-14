@@ -1,0 +1,123 @@
+{
+  "anchors": {
+    "formula_page": {
+      "page": 3,
+      "terms": [
+        "CSC",
+        "RSC",
+        "LP"
+      ]
+    },
+    "table_page": {
+      "page": 5,
+      "terms": [
+        "TABLE I",
+        "Snubber"
+      ]
+    },
+    "title_page": {
+      "page": 1,
+      "terms": [
+        "Snubber-Based Suppression",
+        "SiC MOSFET"
+      ]
+    }
+  },
+  "generation": {
+    "dpi": 300,
+    "jpeg_quality": 92,
+    "pages": "one JPEG image per source page",
+    "renderer": "PyMuPDF"
+  },
+  "scan": {
+    "bytes": 7311617,
+    "filename": "4_gs_prepress_300dpi_scanned_300dpi.pdf",
+    "has_text_layer": false,
+    "image_counts": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "page_count": 6,
+    "page_sizes": [
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ]
+    ],
+    "sha256": "dfad6094bc94dbdb4738aa823f4a72d12a9be9a24d11d66b1c4a866845fe3d27",
+    "text_lengths": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "schema_version": 1,
+  "source": {
+    "bytes": 1713213,
+    "filename": "4_gs_prepress_300dpi.pdf",
+    "has_text_layer": true,
+    "page_count": 6,
+    "page_sizes": [
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ],
+      [
+        612.0,
+        792.0
+      ]
+    ],
+    "sha256": "3679f1b5a51608af34ad98f084ffc757bdc7bc7ff87b315b1ec5eb715fbc142d",
+    "text_lengths": [
+      4262,
+      3199,
+      2526,
+      3417,
+      3201,
+      5670
+    ]
+  }
+}

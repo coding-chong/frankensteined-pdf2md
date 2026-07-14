@@ -88,6 +88,8 @@ class TestMinerUClientInit:
         assert client.token == "test-api-token-12345"
         assert client.model_version == "vlm"
         assert client.poll_interval == 5
+        assert client.poll_timeout == 900
+        assert client.upload_timeout == 120
 
     def test_client_missing_token(self, mock_config_no_token):
         """Test initialization without API token raises error."""
@@ -180,6 +182,7 @@ class TestUploadFile:
         client._upload_file(test_pdf, "https://upload.url")
 
         mock_put.assert_called_once()
+        assert mock_put.call_args.kwargs["timeout"] == client.upload_timeout
 
     @patch('ocr_flow.steps.mineru.requests.put')
     def test_upload_file_failure(self, mock_put, mock_config, test_pdf):
@@ -280,6 +283,57 @@ class TestPollForResult:
 
         assert result == "https://result.url"
         assert mock_get.call_count == 2
+
+    @patch('ocr_flow.steps.mineru.requests.get')
+    @patch('ocr_flow.steps.mineru.time.sleep')
+    @patch('ocr_flow.steps.mineru.time.monotonic')
+    def test_poll_empty_result_logs_queue_and_times_out(
+        self, mock_monotonic, mock_sleep, mock_get, mock_config, capsys
+    ):
+        response = MagicMock()
+        response.json.return_value = {
+            "code": 0,
+            "data": {"extract_result": []},
+        }
+        mock_get.return_value = response
+        mock_monotonic.side_effect = [0, 0, 901]
+
+        client = MinerUClient(mock_config)
+
+        with pytest.raises(RuntimeError, match="batch-123.*900 seconds"):
+            client._poll_for_result("batch-123")
+
+        assert "Queued: waiting for MinerU batch batch-123" in capsys.readouterr().out
+        mock_sleep.assert_called_once_with(client.poll_interval)
+
+    @patch('ocr_flow.steps.mineru.requests.get')
+    @patch('ocr_flow.steps.mineru.time.sleep')
+    @patch('ocr_flow.steps.mineru.time.monotonic')
+    def test_poll_logs_nonterminal_service_state(
+        self, mock_monotonic, mock_sleep, mock_get, mock_config, capsys
+    ):
+        waiting_response = MagicMock()
+        waiting_response.json.return_value = {
+            "code": 0,
+            "data": {"extract_result": [{"state": "waiting-file"}]},
+        }
+        done_response = MagicMock()
+        done_response.json.return_value = {
+            "code": 0,
+            "data": {
+                "extract_result": [
+                    {"state": "done", "full_zip_url": "https://result.url"}
+                ]
+            },
+        }
+        mock_get.side_effect = [waiting_response, done_response]
+        mock_monotonic.side_effect = [0, 0, 5]
+
+        client = MinerUClient(mock_config)
+
+        assert client._poll_for_result("batch-123") == "https://result.url"
+        assert "state: waiting-file" in capsys.readouterr().out
+        mock_sleep.assert_called_once_with(client.poll_interval)
 
 
 # =============================================================================

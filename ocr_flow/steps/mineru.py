@@ -41,6 +41,8 @@ class MinerUClient:
 
         # Polling settings
         self.poll_interval = 5  # seconds
+        self.poll_timeout = 15 * 60  # seconds
+        self.upload_timeout = 2 * 60  # seconds
         self.max_retries = 3
         self.retry_delay = 10  # seconds
 
@@ -77,12 +79,18 @@ class MinerUClient:
             raise ValueError(f"File too large: {file_size_mb:.1f}MB (limit: 200MB)")
 
         # Step 1: Get upload URL
+        self._log(f"Requesting MinerU upload URL for {pdf_path.name}")
         batch_id, upload_url = self._get_upload_url(pdf_path.name)
 
         # Step 2: Upload file
+        self._log(
+            f"Uploading {pdf_path.name} ({file_size_mb:.2f} MB) "
+            f"for batch {batch_id}"
+        )
         self._upload_file(pdf_path, upload_url)
 
         # Step 3: Poll for results
+        self._log(f"Upload completed; polling MinerU batch {batch_id}")
         zip_url = self._poll_for_result(batch_id)
 
         # Step 4: Download and extract
@@ -130,7 +138,9 @@ class MinerUClient:
         with open(pdf_path, "rb") as f:
             for attempt in range(self.max_retries):
                 try:
-                    response = requests.put(upload_url, data=f, timeout=300)
+                    response = requests.put(
+                        upload_url, data=f, timeout=self.upload_timeout
+                    )
                     if response.status_code == 200:
                         return
                     raise RuntimeError(f"Upload failed with status {response.status_code}")
@@ -142,7 +152,17 @@ class MinerUClient:
 
     def _poll_for_result(self, batch_id: str) -> str:
         """Poll API for conversion result."""
+        started = time.monotonic()
+        empty_polls = 0
+        pending_state = None
+        pending_state_polls = 0
         while True:
+            elapsed = time.monotonic() - started
+            if elapsed >= self.poll_timeout:
+                raise RuntimeError(
+                    f"MinerU batch {batch_id} did not produce a result within "
+                    f"{self.poll_timeout} seconds"
+                )
             try:
                 response = requests.get(
                     f"{self.BASE_URL}/extract-results/batch/{batch_id}",
@@ -161,6 +181,12 @@ class MinerUClient:
 
                 extract_result = result.get("data", {}).get("extract_result", [])
                 if not extract_result:
+                    empty_polls += 1
+                    if empty_polls == 1 or empty_polls % 6 == 0:
+                        self._log(
+                            f"Queued: waiting for MinerU batch {batch_id} "
+                            f"({int(elapsed)}s elapsed)"
+                        )
                     time.sleep(self.poll_interval)
                     continue
 
@@ -181,6 +207,15 @@ class MinerUClient:
                         time.sleep(self.poll_interval)
 
                     else:
+                        if state != pending_state:
+                            pending_state = state
+                            pending_state_polls = 0
+                        pending_state_polls += 1
+                        if pending_state_polls == 1 or pending_state_polls % 6 == 0:
+                            self._log(
+                                f"MinerU batch {batch_id} state: "
+                                f"{state or 'unknown'} ({int(elapsed)}s elapsed)"
+                            )
                         time.sleep(self.poll_interval)
 
             except requests.exceptions.RequestException as e:

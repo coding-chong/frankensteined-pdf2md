@@ -11,6 +11,7 @@ from typing import Optional, Dict, Any
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from . import __version__
+from .state import State, StateManager
 
 console = Console()
 
@@ -92,7 +93,6 @@ def detect_unfinished_task(work_dir: Path) -> Optional[Dict[str, Any]]:
     Returns:
         Dict with state info if unfinished, None if completed or no state
     """
-    from .state import State, StateManager
 
     state_manager = StateManager(work_dir)
     if not state_manager.has_state():
@@ -442,12 +442,10 @@ def process(input_path: str, output: str, config: str, verbose: bool,
     from datetime import datetime
     from .pipeline import Pipeline
     from .config import Config
-    from .state import State, StateManager
-
     input_path = Path(input_path)
 
     # S2.3: Check for first-time config
-    config_path = Config.get_config_path()
+    config_path = Path(config).expanduser() if config else Config.get_config_path()
     if not config_path.exists():
         if non_interactive:
             raise click.UsageError(
@@ -462,7 +460,7 @@ def process(input_path: str, output: str, config: str, verbose: bool,
             return
 
     # Load config
-    cfg = Config.load(config_path=Path(config) if config else None)
+    cfg = Config.load(config_path=config_path)
 
     # Create output directory
     output_dir = Path(output) if output else Path.cwd() / "output"
@@ -651,7 +649,7 @@ def process(input_path: str, output: str, config: str, verbose: bool,
     elapsed_time = time.time() - start_time
 
     console.print(f"\n[bold]{'═' * 40}[/bold]")
-    console.print(f"[bold green]处理完成！[/bold green]")
+    console.print("[bold green]处理完成！[/bold green]")
     console.print(f"  [green][OK] 成功:[/green] {success_count} 个文件")
     if failed_count > 0:
         console.print(f"  [red][X] 失败:[/red] {failed_count} 个文件")

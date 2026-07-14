@@ -14,7 +14,7 @@ import pytest
 from pathlib import Path
 import tempfile
 import shutil
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 
 from ocr_flow.cli import (
@@ -222,7 +222,7 @@ class TestInteractiveAsk:
         assert result is not None
         assert result['pdf_type'] == 'text'
         assert result['language'] == 'en'
-        assert result['translate'] == True
+        assert result['translate']
 
     def test_interactive_cancel(self, monkeypatch):
         """Test cancellation in interactive mode."""
@@ -260,7 +260,7 @@ class TestInteractiveAsk:
         assert result is not None
         assert result['pdf_type'] == 'text'
         assert result['language'] == 'en'
-        assert result['translate'] == False
+        assert not result['translate']
 
     def test_interactive_ask_each_pdf_type(self, monkeypatch):
         """Test ask_each for PDF type."""
@@ -361,7 +361,7 @@ class TestInteractiveAsk:
         result = interactive_ask(is_batch=False)
 
         assert result['language'] == 'zh'
-        assert result['translate'] == False  # Auto-skipped for Chinese
+        assert not result['translate']  # Auto-skipped for Chinese
 
 
 # =============================================================================
@@ -394,7 +394,7 @@ class TestCliCommands:
         """Test config command."""
         # Mock the configure_interactive method
         with patch.object(Config, 'configure_interactive') as mock_configure:
-            result = runner.invoke(cli, ['config'])
+            runner.invoke(cli, ['config'])
             mock_configure.assert_called_once()
 
     def test_doctor_help(self, runner):
@@ -493,7 +493,7 @@ class TestProcessCommand:
         mock_instance.run.return_value = Path("/output/result")
         mock_pipeline.return_value = mock_instance
 
-        result = runner.invoke(cli, [
+        runner.invoke(cli, [
             'process', str(test_pdf),
             '--non-interactive',
             '--pdf-type', 'text',
@@ -554,6 +554,40 @@ class TestProcessCommand:
         assert mock_instance.run.call_args.kwargs['language'] == 'zh'
         assert mock_instance.run.call_args.kwargs['ocr_timeout'] == 7200
         assert mock_instance.run.call_args.kwargs['ocr_language'] == 'models/config_chinese.txt'
+
+    @patch('ocr_flow.pipeline.Pipeline')
+    def test_process_uses_explicit_config_when_default_config_is_missing(
+        self, mock_pipeline, runner, test_pdf, temp_dir, monkeypatch
+    ):
+        """An explicit config must satisfy non-interactive preflight on clean CI."""
+        explicit_config = temp_dir / "live-config.toml"
+        config = Config()
+        config.mineru.api_token = "test-token"
+        config.save(explicit_config)
+        monkeypatch.setattr(
+            Config, "get_config_path", lambda: temp_dir / "missing-config.toml"
+        )
+        mock_pipeline.return_value.run.return_value = temp_dir / "output"
+
+        result = runner.invoke(
+            cli,
+            [
+                "process",
+                str(test_pdf),
+                "--config",
+                str(explicit_config),
+                "--non-interactive",
+                "--pdf-type",
+                "text",
+                "--lang",
+                "en",
+                "--no-translate",
+                "--no-open-output",
+            ],
+        )
+
+        assert result.exit_code == 0
+        mock_pipeline.assert_called_once()
 
 
 # =============================================================================
@@ -660,7 +694,7 @@ class TestCliEdgeCases:
             mock_instance.run.return_value = output_dir
             mock_pipeline.return_value = mock_instance
 
-            result = runner.invoke(cli, [
+            runner.invoke(cli, [
                 'process', str(test_pdf),
                 '-o', str(output_dir),
                 '--non-interactive',
@@ -712,7 +746,7 @@ class TestCliEdgeCases:
             mock_instance.run.return_value = Path("/output")
             mock_pipeline.return_value = mock_instance
 
-            result = runner.invoke(cli, [
+            runner.invoke(cli, [
                 'process', str(test_pdf),
                 '--non-interactive',
                 '--pdf-type', 'text',
@@ -724,4 +758,4 @@ class TestCliEdgeCases:
             # Verbose flag should be passed to Pipeline
             if mock_pipeline.called:
                 call_kwargs = mock_pipeline.call_args[1]
-                assert call_kwargs.get('verbose') == True
+                assert call_kwargs.get('verbose')

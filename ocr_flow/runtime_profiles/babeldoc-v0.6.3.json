@@ -8,6 +8,13 @@
     "path": "babeldoc-v0.6.3.uv.lock",
     "sha256": "AE94ED3C911DD3508FA5DDEDF2D95D3E66501653F25082976F0CF5638CB0EAF2"
   },
+  "common_patches": [
+    {
+      "id": "ocr-workaround-rendering",
+      "path": "patches/babeldoc-v0.6.3-ocr-workaround.patch",
+      "sha256": "A2802D7E9A1AB585F06A46B9B66141E7A47F630A5A382DCA772C292BCF2D833E"
+    }
+  ],
   "provider_files": {
     "babeldoc/docvision/doclayout.py": {
       "upstream_blob": "14126c1241263f3ee23cc31cffcfb18cd88a3ade",

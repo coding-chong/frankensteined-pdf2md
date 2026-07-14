@@ -17,6 +17,7 @@ ocr_flow.egg-info/top_level.txt
 ocr_flow/runtime_profiles/babeldoc-v0.6.3.json
 ocr_flow/runtime_profiles/babeldoc-v0.6.3.uv.lock
 ocr_flow/runtime_profiles/umiocr-paddle-v2.1.5.json
+ocr_flow/runtime_profiles/patches/babeldoc-v0.6.3-ocr-workaround.patch
 ocr_flow/runtime_profiles/patches/babeldoc-v0.6.3-windows-directml.patch
 ocr_flow/steps/__init__.py
 ocr_flow/steps/compress.py
@@ -31,11 +32,13 @@ ocr_flow/utils/api_client.py
 ocr_flow/utils/graceful_exit.py
 ocr_flow/utils/pdf_utils.py
 tests/test_cli.py
+tests/test_complex_pdf_assets.py
 tests/test_compress.py
 tests/test_config.py
 tests/test_format_fix.py
 tests/test_graceful_exit.py
 tests/test_image_download.py
+tests/test_live_matrix_validation.py
 tests/test_mineru.py
 tests/test_ocr.py
 tests/test_pipeline.py

@@ -1,0 +1,132 @@
+diff --git a/babeldoc/format/pdf/document_il/frontend/il_creater.py b/babeldoc/format/pdf/document_il/frontend/il_creater.py
+index 6c1ec94..eda5c0e 100644
+--- a/babeldoc/format/pdf/document_il/frontend/il_creater.py
++++ b/babeldoc/format/pdf/document_il/frontend/il_creater.py
+@@ -1084,2 +1084,7 @@ class ILCreater:
+         if self.translation_config.ocr_workaround:
++            # OCR engines can emit oversized short spans for plot labels and
++            # diagram fragments. Their raster source remains visible, while
++            # rendering them again as forced-black text corrupts the page.
++            if pdf_style.font_size >= 36.0 and len(char_unicode.strip()) <= 4:
++                return
+             pdf_char.pdf_style.graphic_state = BLACK
+diff --git a/babeldoc/format/pdf/document_il/frontend/il_creater_active.py b/babeldoc/format/pdf/document_il/frontend/il_creater_active.py
+index c79eee1..9b29221 100644
+--- a/babeldoc/format/pdf/document_il/frontend/il_creater_active.py
++++ b/babeldoc/format/pdf/document_il/frontend/il_creater_active.py
+@@ -1395,2 +1395,7 @@ class ActiveILCreater:
+         if self.translation_config.ocr_workaround:
++            # OCR engines can emit oversized short spans for plot labels and
++            # diagram fragments. Their raster source remains visible, while
++            # rendering them again as forced-black text corrupts the page.
++            if pdf_style.font_size >= 36.0 and len(char_unicode.strip()) <= 4:
++                return
+             pdf_char.pdf_style.graphic_state = BLACK
+diff --git a/babeldoc/format/pdf/document_il/midend/paragraph_finder.py b/babeldoc/format/pdf/document_il/midend/paragraph_finder.py
+index efeed53..1ff50b6 100644
+--- a/babeldoc/format/pdf/document_il/midend/paragraph_finder.py
++++ b/babeldoc/format/pdf/document_il/midend/paragraph_finder.py
+@@ -89 +89,55 @@ class ParagraphFinder:
++    @staticmethod
++    def _preserve_source_raster(paragraph: PdfParagraph):
++        paragraph.box = None
++        paragraph.unicode = ""
++        paragraph.pdf_paragraph_composition = []
++
++    @staticmethod
++    def _is_noisy_ocr_margin_paragraph(
++        page: Page, paragraph: PdfParagraph
++    ) -> bool:
++        # Document IL uses PDF coordinates, so the bottom margin is near y=0.
++        if paragraph.box is None or paragraph.box.y > page.cropbox.box.y + 96.0:
++            return False
++        text = re.sub(r"\s+", "", paragraph.unicode or "")
++        if len(text) < 48:
++            return False
++        alphabetic = sum(character.isalpha() for character in text)
++        noisy = sum(
++            character.isdigit() or character in "/-_()$.,:"
++            for character in text
++        )
++        return alphabetic <= len(text) * 0.2 and noisy >= len(text) * 0.65
++
++    def _preserve_source_graphics_and_tables(self, page: Page):
++        """Leave OCR-backed graphics, tables, and margin noise in source raster."""
++        protected_boxes = [
++            layout.box
++            for layout in page.page_layout
++            if layout.box is not None
++            and layout.class_name
++            in {"figure", "table"}
++        ]
++        # Figure/table captions are semantic text. They use their layout boxes
++        # in add_text_fill_background so BabelDOC can mask and translate them.
++        for paragraph in page.pdf_paragraph:
++            if paragraph.box is None:
++                continue
++            if not any(
++                calculate_iou_for_boxes(paragraph.box, protected_box) >= 0.8
++                for protected_box in protected_boxes
++            ):
++                continue
++
++            # OCR often merges multiple table cells or plot labels into one
++            # paragraph. Masking and re-typesetting that fragment erases data;
++            # preserve the source raster instead.
++            self._preserve_source_raster(paragraph)
++
++        for paragraph in page.pdf_paragraph:
++            if self._is_noisy_ocr_margin_paragraph(page, paragraph):
++                # OCR text layers can contain binary-looking garbage that is
++                # absent from the page raster. Do not mask or re-typeset it.
++                self._preserve_source_raster(paragraph)
++
+     def add_text_fill_background(self, page: Page):
+@@ -91,6 +145,2 @@ class ParagraphFinder:
+         for paragraph in page.pdf_paragraph:
+-            layout_id = paragraph.layout_id
+-            if layout_id is None:
+-                continue
+-            layout = layout_map[layout_id]
+             if paragraph.box is None:
+@@ -103,11 +153,27 @@ class ParagraphFinder:
+             )
+-            layout_box = layout.box
+-            if layout_box.x < x1:
+-                x1 = layout_box.x
+-            if layout_box.y < y1:
+-                y1 = layout_box.y
+-            if layout_box.x2 > x2:
+-                x2 = layout_box.x2
+-            if layout_box.y2 > y2:
+-                y2 = layout_box.y2
++            layout = layout_map.get(paragraph.layout_id)
++            if (
++                layout is not None
++                and layout.box is not None
++                and layout.class_name
++                in {
++                    "text",
++                    "plain text",
++                    "paragraph_hybrid",
++                    "title",
++                    "figure_caption",
++                    "table_caption",
++                }
++            ):
++                x1, y1, x2, y2 = (
++                    layout.box.x,
++                    layout.box.y,
++                    layout.box.x2,
++                    min(page.cropbox.box.y2, layout.box.y2 + 3.0),
++                )
++            if y2 - y1 <= 6.0:
++                # OCR fallback lines can under-report glyph height. Pad only
++                # these short masks so source-text fragments do not remain.
++                y1 = max(page.cropbox.box.y, y1 - 2.0)
++                y2 = min(page.cropbox.box.y2, y2 + 2.0)
+             assert x2 > x1 and y2 > y1
+@@ -296,2 +362,3 @@ class ParagraphFinder:
+         if self.translation_config.ocr_workaround:
++            self._preserve_source_graphics_and_tables(page)
+             self.add_text_fill_background(page)
