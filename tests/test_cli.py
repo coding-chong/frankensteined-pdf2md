@@ -677,6 +677,29 @@ class TestDoctorCommand:
         assert 'Next step command:' not in result.output
         assert 'ocr-flow process <input.pdf>' not in result.output
 
+    def test_doctor_json_requires_deployment(self, runner):
+        result = runner.invoke(cli, ['doctor', '--json', 'report.json'])
+
+        assert result.exit_code == 2
+        assert '--json requires --deployment' in result.output
+
+    @patch('ocr_flow.deployment.write_report')
+    @patch('ocr_flow.deployment.build_deployment_report')
+    def test_doctor_deployment_json_and_failure_exit(self, build_report, write_report, runner, tmp_path):
+        from ocr_flow.deployment import DeploymentCheck, DeploymentReport
+
+        check = DeploymentCheck('runtime.rapid', 'FAIL', 'Rapid missing', {}, 'Configure Rapid.', True)
+        report = DeploymentReport(1, 'now', 'NOT_READY', [check])
+        build_report.return_value = report
+        report_path = tmp_path / 'deployment.json'
+
+        result = runner.invoke(cli, ['doctor', '--deployment', '--json', str(report_path)])
+
+        assert result.exit_code == 1
+        assert '[FAIL] runtime.rapid: Rapid missing' in result.output
+        assert 'Deployment verdict: NOT_READY' in result.output
+        write_report.assert_called_once()
+
 
 # =============================================================================
 # TestCliEdgeCases - Edge Case Tests

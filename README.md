@@ -80,11 +80,28 @@ CPU-only 只使用 BabelDOC 的 cpu-safe profile。不要使用 windows-directml
   的获取与验证路径，完整表见新机手册。
 - pythonnet 只支持 Windows .NET WebClient 的 MinerU ZIP 回退；它不是 OCR
   引擎。curl.exe 和 PowerShell 也是机会性回退，不是额外安装前置。
-- MinerU 结果 ZIP 下载与 Markdown 图片本地化是两条路径：前者使用无环境代理
-  的 requests、curl、.NET、PowerShell 回退；后者先复制 ZIP 中本地图片，只在
-  Markdown 有远程 HTTP 图片时使用 requests。
+- MinerU 结果 ZIP 下载与 Markdown 图片本地化是两条路径：前者的 requests、
+  curl、.NET、PowerShell 标准回退保留系统 CA 和系统/环境代理策略；若 CDN DNS
+  被本机网络截获，最后可对限定的 OpenXLab CDN 使用公共 DNS `curl --resolve`
+  直连，仍按原主机名验证证书且只允许 HTTPS。后者先复制 ZIP 中本地图片，只在
+  Markdown 有远程 HTTP 图片时使用 requests。任何
+  `verify=False`、`curl -k` 或 TrustAll 结果都不算受支持证据。
 
 ## 输出、检查和恢复
+
+付费处理前先运行统一部署预检：
+
+~~~powershell
+uv run --locked --extra windows ocr-flow doctor --deployment
+uv run --locked --extra windows ocr-flow doctor --deployment --json output\deployment-report.json
+~~~
+
+它不启动或安装 runtime、不调用付费 API；结果为 `PASS`、`WARN`、`FAIL` 或
+`UNVERIFIED`，并给出 `READY`、`NOT_READY` 或 `UNVERIFIED` verdict。JSON 只含
+分类路径和 presence-only 凭据状态，不含 token、key、签名 URL 或原始用户目录。
+“受支持机器”要求标准 Windows 用户跑通所有正常工作流和完整四案例矩阵，不是
+只通过 CPU/Rapid 本地 smoke。portable Ghostscript 的 no-admin 配置和残余风险见
+[新机安装手册](docs/fresh-clone-setup.md#统一部署预检)。
 
 一个 Conversion Run 的输出位于：
 

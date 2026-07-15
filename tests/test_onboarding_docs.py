@@ -56,3 +56,19 @@ def test_ai_guide_is_repository_neutral_and_indexes_runtime_owners():
 
 def test_python_version_file_matches_the_documented_uv_interpreter():
     assert _read(".python-version").strip() == "3.13.12"
+
+
+def test_onboarding_defines_unified_deployment_observability_contract():
+    readme = _read("README.md")
+    setup = _read("docs/fresh-clone-setup.md")
+    ai_guide = _read("docs/ai-maintenance-guide.md")
+
+    for document in (readme, setup, ai_guide):
+        assert "doctor --deployment" in document
+        assert "UNVERIFIED" in document
+    assert "portable Ghostscript" in setup
+    assert "24 个\nMinerU parts" in setup
+    assert "两个翻译" in setup
+    assert "ocr_flow/deployment.py" in ai_guide
+    assert "`verify=False`" in setup
+    assert "`curl -k`" in setup

@@ -143,6 +143,39 @@ uv run --locked --extra windows python -c "from pathlib import Path; import fitz
 
 ## 5. 正常处理命令
 
+### 统一部署预检
+
+受支持机器不是“只能跑其中一种工作流”的分级概念。它必须以标准 Windows 用户
+完成文字/扫描、翻译/不翻译、Rapid CPU OCR、portable Ghostscript、cpu-safe
+BabelDOC，以及第 7 节完整四案例矩阵。管理员权限只能用于可替换的一次性系统
+安装；正常安装、预检和运行不得依赖提权。
+
+Ghostscript 无管理员路径是把官方发行版解压到用户可写目录（例如
+`%LOCALAPPDATA%\OCR-Flow\Ghostscript\`），然后在配置向导中把
+`compress.ghostscript_path` 指向其中真实的 `gswin64c.exe`。不要只记录下载文件、
+安装器启动或签名结果；仍须运行第 4 节的一页压缩 smoke。系统安装与 portable
+目录二选一即可，`doctor` 的发现顺序不会改变“真实压缩兼容性才是证据”的规则。
+
+在任何付费处理前运行统一、只读、零配额预检：
+
+~~~powershell
+uv run --locked --extra windows ocr-flow doctor --deployment
+uv run --locked --extra windows ocr-flow doctor --deployment --json output\deployment-report.json
+~~~
+
+`PASS` 是本机已观察到的成功，`FAIL` 是必须先修复的硬前置，`WARN` 是发现了可用
+组件但仍缺兼容性 smoke，`UNVERIFIED` 是当前机器不能诚实证明的环境条件。只要有
+required `FAIL`，命令返回 1 且 verdict 为 `NOT_READY`；存在 `WARN` 或
+`UNVERIFIED` 时 verdict 为 `UNVERIFIED`，不能据此声称机器已受支持。JSON 使用
+稳定 check ID 和 `<checkout>`、`<user-config>`、`<temp>`、`<output>` 分类路径，
+写出前再次扫描密钥、签名 URL 和用户目录；报告只保存在用户指定位置且不会上传。
+
+预检不会启动 Umi-OCR、安装/修改 runtime，也不会调用 MinerU 或翻译 API。它会
+明确保留当前主机不能模拟的证据缺口：不同 Windows 内核、物理无 GPU、真实 EDR、
+企业 TLS inspection 和真实低内存硬件。最终支持门仍是标准用户下完成 24 个
+MinerU parts、两个翻译、全部状态/PDF/Markdown/报告/contact sheets、密钥扫描和
+人工视觉复核。
+
 下面命令需要已配置 MinerU token。把 credentialConfig 指向用户拥有的配置；
 它不应位于 Git checkout 内。
 
@@ -182,14 +215,18 @@ uv run --locked --extra windows ocr-flow process <input.pdf> -o <output-dir> --c
 ## 6. MinerU ZIP 与 Markdown 图片的不同边界
 
 MinerU 转换结束后，ocr_flow/steps/mineru.py 下载的是结果 ZIP。该受支持链路按
-顺序尝试：关闭环境 proxy 的自定义 TLS requests、关闭 proxy 的 curl、Windows
-.NET WebClient、PowerShell。curl 和 PowerShell 只是机会性回退；它们不存在
-不会要求额外安装。pythonnet 只为 .NET WebClient 回退提供能力。
+顺序尝试 requests、curl、Windows .NET WebClient、PowerShell，并始终保留系统
+CA 验证。标准方法继承系统/环境 proxy；若限定的 OpenXLab CDN 在本机 DNS 下
+发生 TLS EOF，最后的 direct-CDN 回退可通过 Google DoH 获得 global IPv4，并用
+`curl --resolve` 保持原主机名/SNI/证书验证，只允许 HTTPS 跳转。curl 和
+PowerShell 是机会性回退；pythonnet 只为 .NET WebClient 回退提供能力。
 
 之后 ocr_flow/steps/image_download.py 处理 Markdown 图片，这不是 ZIP 下载
 回退：它优先从已解压的 MinerU 结果包复制本地图片；只有 Markdown 出现远程 HTTP
-图片 URL 时才使用 requests 下载。两条链路不能互相证明成功，且 ZIP 下载刻意不
-继承环境代理。不要把任何未验证的 DNS 绕过方案写进配置或自动化脚本。
+图片 URL 时才使用 requests 下载。两条链路不能互相证明成功。需要
+`verify=False`、`curl -k` 或 TrustAll 才能成功的结果不能作为支持证据。受限
+direct-CDN 回退会仅对该下载绕过 proxy；企业策略禁止直连时应明确失败，不能改
+全局 proxy/TLS 设置。本回退必须有真实矩阵证据，mock 命令构造不能证明可用。
 
 ## 7. 复杂 PDF 四 case 矩阵
 

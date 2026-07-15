@@ -687,13 +687,34 @@ def config():
 @click.option('--translate', is_flag=True, help='Check translation dependencies (BabelDOC)')
 @click.option('--ocr', is_flag=True, help='Check OCR dependencies (UMI OCR)')
 @click.option('--start-ocr', is_flag=True, help='Auto-start UMI OCR if not running')
-def doctor(fix: bool, translate: bool, ocr: bool, start_ocr: bool):
+@click.option('--deployment', is_flag=True, help='Run the read-only unified deployment preflight')
+@click.option('--json', 'json_path', type=click.Path(path_type=Path), help='Write a redacted deployment report')
+def doctor(fix: bool, translate: bool, ocr: bool, start_ocr: bool, deployment: bool, json_path: Optional[Path]):
     """Check system dependencies and configuration."""
     from .self_check import SelfCheck
     from .config import Config
 
     # Load config
     cfg = Config.load()
+
+    if json_path and not deployment:
+        raise click.UsageError('--json requires --deployment')
+    if deployment:
+        from .deployment import build_deployment_report, write_report
+
+        report = build_deployment_report(cfg)
+        click.echo("\n=== OCR Flow Deployment Check ===\n")
+        for check in report.checks:
+            click.echo(f"  [{check.status}] {check.id}: {check.summary}")
+            if check.remediation:
+                click.echo(f"    Remediation: {check.remediation}")
+        click.echo(f"\nDeployment verdict: {report.verdict}")
+        if json_path:
+            write_report(json_path, report, cfg)
+            click.echo(f"Redacted report written: {json_path}")
+        if report.verdict == 'NOT_READY':
+            raise click.exceptions.Exit(1)
+        return
 
     checker = SelfCheck(config=cfg)
 

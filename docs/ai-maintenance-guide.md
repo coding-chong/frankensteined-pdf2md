@@ -94,14 +94,44 @@ path and lock update.
 
 MinerU has two separate data flows:
 
-1. Result ZIP retrieval disables inherited proxies and uses the committed
-   requests, curl, .NET WebClient, PowerShell fallback order.
+1. Result ZIP retrieval preserves system CA validation. Standard requests,
+   curl, .NET WebClient, and PowerShell inherit proxy policy. A final
+   OpenXLab-only direct fallback may resolve a global IPv4 through HTTPS DoH
+   and use `curl --resolve`; it must preserve hostname/SNI validation, restrict
+   redirects to HTTPS, and never log the signed URL or resolved address.
 2. Markdown image localization copies local extracted assets first, then
    downloads only remote HTTP image URLs.
 
-Do not document, stage, or treat mock coverage as proof for any uncommitted
-public-DNS, proxy, or CDN workaround. A successful mock test is only a
-command-construction contract, not a real network result.
+Do not treat mock coverage as proof for a public-DNS, proxy, or CDN workaround.
+A successful mock test is only a command-construction contract; support needs
+a real matrix where standard methods fail and the secure fallback succeeds.
+Never accept `verify=False`, `curl -k`, TrustAll callbacks, or removed proxy
+variables as a compatibility fix. A network that cannot complete with valid
+certificates must fail early and remain unsupported or `UNVERIFIED` pending a
+separately evidenced secure design.
+
+## Deployment Diagnostic Contract
+
+`ocr_flow/deployment.py` owns the typed, read-only result model used by
+`ocr-flow doctor --deployment [--json <path>]`. Check IDs and schema version
+are public support APIs. The CLI renders them but must not duplicate verdict,
+redaction, or secret-scan logic. Existing doctor modes remain compatible.
+
+Deployment checks may perform temporary create/write/rename/delete probes in
+the selected directories and local HTTP readiness reads. They must remove
+their probe files, consume no provider quota, start no service, install no
+runtime, change no global proxy/security policy, and upload no report. Evidence
+uses path categories, presence-only credentials, versions, booleans, and
+resource counts; never pass raw runtime messages into JSON because those may
+contain user paths or commands.
+
+The supported baseline is unified. A standard Windows user must complete all
+normal workflows and the four-case CPU/Rapid matrix with 24 MinerU parts, two
+translations, retained evidence, secret scan, and human visual review.
+Portable Ghostscript is the replaceable no-admin path. Different Windows
+kernels, physical no-GPU hardware, real EDR, enterprise TLS inspection, and
+genuine low-memory hardware stay `UNVERIFIED` until exercised. Never convert
+an `UNVERIFIED` result into compatibility language based on mocks or one host.
 
 ## CPU-only BabelDOC and Matrix Contract
 
