@@ -17,6 +17,7 @@ import zipfile
 from unittest.mock import patch, MagicMock
 from types import SimpleNamespace
 
+import ocr_flow.steps.mineru as mineru
 from ocr_flow.steps.mineru import MinerUClient
 from ocr_flow.config import Config
 
@@ -579,6 +580,240 @@ class TestCdnDownloadFallback:
             "cdn-mineru.openxlab.org.cn:443:8.222.80.133"
         )
         assert command[command.index('--noproxy') + 1] == "*"
+
+    def test_resolved_curl_keeps_extracted_markdown_when_temp_cleanup_races(
+        self, mock_config, temp_dir
+    ):
+        output_dir = temp_dir / "result"
+        output_dir.mkdir()
+        client = MinerUClient(mock_config)
+        original_unlink = mineru.os.unlink
+        fallback_completed = False
+
+        def write_archive(_curl_path, _url, temporary_path):
+            nonlocal fallback_completed
+            with zipfile.ZipFile(temporary_path, "w") as archive:
+                archive.writestr("full.md", "# Extracted")
+            fallback_completed = True
+            return True
+
+        def disappear_during_cleanup(path):
+            if fallback_completed and str(path).endswith(".zip"):
+                original_unlink(path)
+                raise FileNotFoundError(path)
+            return original_unlink(path)
+
+        with (
+            patch.object(
+                mineru.requests.Session,
+                "get",
+                side_effect=mineru.requests.exceptions.SSLError(),
+            ),
+            patch.object(mineru.shutil, "which", return_value="curl"),
+            patch.object(
+                mineru.subprocess,
+                "run",
+                return_value=SimpleNamespace(returncode=35),
+            ),
+            patch.object(
+                MinerUClient,
+                "_download_with_resolved_curl",
+                side_effect=write_archive,
+            ),
+            patch.object(mineru.os, "unlink", side_effect=disappear_during_cleanup),
+            patch.object(mineru.os, "name", "posix"),
+        ):
+            result = client._download_and_extract(
+                "https://cdn-mineru.openxlab.org.cn/result.zip", output_dir
+            )
+
+        assert result == output_dir / "full.md"
+
+    def test_resolved_curl_retries_when_archive_disappears_before_extraction(
+        self, mock_config, temp_dir
+    ):
+        output_dir = temp_dir / "result"
+        output_dir.mkdir()
+        client = MinerUClient(mock_config)
+        attempts = 0
+        archive_paths = []
+
+        def write_archive(_curl_path, _url, temporary_path):
+            nonlocal attempts
+            attempts += 1
+            archive_paths.append(temporary_path)
+            with zipfile.ZipFile(temporary_path, "w") as archive:
+                archive.writestr("full.md", "# Extracted")
+            if attempts == 1:
+                Path(temporary_path).unlink()
+            return True
+
+        with (
+            patch.object(
+                mineru.requests.Session,
+                "get",
+                side_effect=mineru.requests.exceptions.SSLError(),
+            ),
+            patch.object(mineru.shutil, "which", return_value="curl"),
+            patch.object(
+                mineru.subprocess,
+                "run",
+                return_value=SimpleNamespace(returncode=35),
+            ),
+            patch.object(
+                MinerUClient,
+                "_download_with_resolved_curl",
+                side_effect=write_archive,
+            ),
+            patch.object(mineru.os, "name", "posix"),
+        ):
+            result = client._download_and_extract(
+                "https://cdn-mineru.openxlab.org.cn/result.zip", output_dir
+            )
+
+        assert attempts == 2
+        assert all(Path(path).parent == output_dir for path in archive_paths)
+        assert result == output_dir / "full.md"
+
+    def test_resolved_curl_keeps_new_markdown_after_extract_file_not_found(
+        self, mock_config, temp_dir
+    ):
+        output_dir = temp_dir / "result"
+        output_dir.mkdir()
+        client = MinerUClient(mock_config)
+
+        class PartialArchive:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def extractall(self, _destination):
+                (output_dir / "full.md").write_text("# Extracted", encoding="utf-8")
+                raise FileNotFoundError("late archive member")
+
+        with (
+            patch.object(
+                mineru.requests.Session,
+                "get",
+                side_effect=mineru.requests.exceptions.SSLError(),
+            ),
+            patch.object(mineru.shutil, "which", return_value="curl"),
+            patch.object(
+                mineru.subprocess,
+                "run",
+                return_value=SimpleNamespace(returncode=35),
+            ),
+            patch.object(
+                MinerUClient,
+                "_download_with_resolved_curl",
+                return_value=True,
+            ) as mock_download,
+            patch.object(mineru.zipfile, "ZipFile", return_value=PartialArchive()),
+            patch.object(mineru.os, "name", "posix"),
+        ):
+            result = client._download_and_extract(
+                "https://cdn-mineru.openxlab.org.cn/result.zip", output_dir
+            )
+
+        assert mock_download.call_count == 1
+        assert result == output_dir / "full.md"
+
+    def test_resolved_curl_does_not_accept_stale_markdown_after_extract_error(
+        self, mock_config, temp_dir
+    ):
+        output_dir = temp_dir / "result"
+        output_dir.mkdir()
+        (output_dir / "full.md").write_text("# Previous", encoding="utf-8")
+        client = MinerUClient(mock_config)
+
+        class BrokenArchive:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def extractall(self, _destination):
+                raise FileNotFoundError("late archive member")
+
+        with (
+            patch.object(
+                mineru.requests.Session,
+                "get",
+                side_effect=mineru.requests.exceptions.SSLError(),
+            ),
+            patch.object(mineru.shutil, "which", return_value="curl"),
+            patch.object(
+                mineru.subprocess,
+                "run",
+                return_value=SimpleNamespace(returncode=35),
+            ),
+            patch.object(
+                MinerUClient,
+                "_download_with_resolved_curl",
+                return_value=True,
+            ) as mock_download,
+            patch.object(mineru.zipfile, "ZipFile", return_value=BrokenArchive()),
+            patch.object(mineru.os, "name", "posix"),
+        ):
+            with pytest.raises(RuntimeError, match="All download methods failed"):
+                client._download_and_extract(
+                    "https://cdn-mineru.openxlab.org.cn/result.zip", output_dir
+                )
+
+        assert mock_download.call_count == 2
+
+    def test_resolved_curl_accepts_replaced_markdown_after_extract_error(
+        self, mock_config, temp_dir
+    ):
+        output_dir = temp_dir / "result"
+        output_dir.mkdir()
+        (output_dir / "full.md").write_text("# Previous", encoding="utf-8")
+        client = MinerUClient(mock_config)
+
+        class ReplacesMarkdownThenRaises:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def extractall(self, _destination):
+                (output_dir / "full.md").write_text("# Extracted", encoding="utf-8")
+                raise FileNotFoundError("late archive member")
+
+        with (
+            patch.object(
+                mineru.requests.Session,
+                "get",
+                side_effect=mineru.requests.exceptions.SSLError(),
+            ),
+            patch.object(mineru.shutil, "which", return_value="curl"),
+            patch.object(
+                mineru.subprocess,
+                "run",
+                return_value=SimpleNamespace(returncode=35),
+            ),
+            patch.object(
+                MinerUClient,
+                "_download_with_resolved_curl",
+                return_value=True,
+            ) as mock_download,
+            patch.object(
+                mineru.zipfile,
+                "ZipFile",
+                return_value=ReplacesMarkdownThenRaises(),
+            ),
+            patch.object(mineru.os, "name", "posix"),
+        ):
+            result = client._download_and_extract(
+                "https://cdn-mineru.openxlab.org.cn/result.zip", output_dir
+            )
+
+        assert mock_download.call_count == 1
+        assert result == output_dir / "full.md"
 
     def test_download_error_kind_does_not_echo_signed_url(self, mock_config):
         client = MinerUClient(mock_config)

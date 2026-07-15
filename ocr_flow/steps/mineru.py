@@ -17,6 +17,7 @@ import requests
 
 
 PUBLIC_DNS_RESOLVER = "https://dns.google/resolve"
+DIRECT_CDN_EXTRACTION_ATTEMPTS = 2
 
 
 class MinerUClient:
@@ -28,6 +29,16 @@ class MinerUClient:
     def _download_error_kind(error: BaseException) -> str:
         """Describe a download failure without echoing a signed URL."""
         return type(error).__name__
+
+    @staticmethod
+    def _remove_temporary_file(path) -> None:
+        """Remove a download temporary file unless another process won the race."""
+        if not path:
+            return
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
 
     def __init__(self, config, logger=None):
         """Initialize client with config."""
@@ -271,8 +282,7 @@ class MinerUClient:
             return False
 
         for address in self._resolve_public_cdn_ipv4(hostname):
-            if os.path.exists(temporary_path):
-                os.unlink(temporary_path)
+            self._remove_temporary_file(temporary_path)
             command = [
                 curl_path,
                 "-L",
@@ -327,13 +337,12 @@ class MinerUClient:
             with zipfile.ZipFile(tmp_path, 'r') as zf:
                 zf.extractall(output_dir)
 
-            os.unlink(tmp_path)
+            self._remove_temporary_file(tmp_path)
             return self._find_md_file(output_dir)
 
         except Exception as e:
             last_error = RuntimeError(self._download_error_kind(e))
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+            self._remove_temporary_file(tmp_path)
             self._log(
                 f"Method 1 (requests) failed: {self._download_error_kind(e)}"
             )
@@ -354,7 +363,7 @@ class MinerUClient:
                 if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
                     with zipfile.ZipFile(tmp_path, 'r') as zf:
                         zf.extractall(output_dir)
-                    os.unlink(tmp_path)
+                    self._remove_temporary_file(tmp_path)
                     return self._find_md_file(output_dir)
                 else:
                     self._log(f"Method 2 (curl) failed: returncode={result.returncode}")
@@ -367,30 +376,70 @@ class MinerUClient:
         # Method 2b: use public DNS when the local resolver intercepts the CDN.
         try:
             if curl_path:
-                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-                    tmp_path = tmp.name
+                for attempt in range(DIRECT_CDN_EXTRACTION_ATTEMPTS):
+                    with tempfile.NamedTemporaryFile(
+                        suffix=".zip", dir=output_dir, delete=False
+                    ) as tmp:
+                        tmp_path = tmp.name
 
-                if self._download_with_resolved_curl(curl_path, zip_url, tmp_path):
+                    if not self._download_with_resolved_curl(
+                        curl_path, zip_url, tmp_path
+                    ):
+                        last_error = RuntimeError(
+                            "curl with public DNS did not produce a CDN result"
+                        )
+                        self._remove_temporary_file(tmp_path)
+                        self._log("Method 2b (curl with public DNS) failed")
+                        break
+
                     self._log(
                         "Method 2b (certificate-validating direct CDN fallback) succeeded"
                     )
-                    with zipfile.ZipFile(tmp_path, 'r') as zf:
-                        zf.extractall(output_dir)
-                    os.unlink(tmp_path)
-                    return self._find_md_file(output_dir)
+                    markdown_before_extraction = {
+                        path: path.read_bytes()
+                        for path in output_dir.rglob("*.md")
+                        if path.is_file()
+                    }
+                    try:
+                        with zipfile.ZipFile(tmp_path, 'r') as zf:
+                            zf.extractall(output_dir)
+                    except FileNotFoundError:
+                        self._remove_temporary_file(tmp_path)
+                        # A late member path can fail after the result Markdown is durable.
+                        updated_markdown = next(
+                            (
+                                path
+                                for path in output_dir.rglob("*.md")
+                                if path.is_file()
+                                and (
+                                    path not in markdown_before_extraction
+                                    or path.read_bytes()
+                                    != markdown_before_extraction[path]
+                                )
+                            ),
+                            None,
+                        )
+                        if updated_markdown:
+                            self._log(
+                                "Method 2b retained updated Markdown after extraction "
+                                "FileNotFoundError"
+                            )
+                            return updated_markdown
+                        if attempt + 1 == DIRECT_CDN_EXTRACTION_ATTEMPTS:
+                            raise
+                        self._log(
+                            "Method 2b produced no Markdown after extraction "
+                            "FileNotFoundError; retrying"
+                        )
+                        continue
 
-                last_error = RuntimeError(
-                    "curl with public DNS did not produce a CDN result"
-                )
-                if tmp_path and os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-                self._log("Method 2b (curl with public DNS) failed")
+                    self._remove_temporary_file(tmp_path)
+                    return self._find_md_file(output_dir)
             else:
                 self._log("Method 2b (curl with public DNS) skipped: curl not found")
         except Exception as e:
             last_error = RuntimeError(self._download_error_kind(e))
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+            self._remove_temporary_file(tmp_path)
             self._log(
                 "Method 2b (curl with public DNS) failed: "
                 f"{self._download_error_kind(e)}"
@@ -412,13 +461,12 @@ class MinerUClient:
                 if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
                     with zipfile.ZipFile(tmp_path, 'r') as zf:
                         zf.extractall(output_dir)
-                    os.unlink(tmp_path)
+                    self._remove_temporary_file(tmp_path)
                     return self._find_md_file(output_dir)
 
             except Exception as e:
                 last_error = RuntimeError(self._download_error_kind(e))
-                if tmp_path and os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
+                self._remove_temporary_file(tmp_path)
                 self._log(
                     "Method 3 (.NET WebClient) failed: "
                     f"{self._download_error_kind(e)}"
@@ -444,18 +492,16 @@ class MinerUClient:
                 if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
                     with zipfile.ZipFile(tmp_path, 'r') as zf:
                         zf.extractall(output_dir)
-                    os.unlink(tmp_path)
+                    self._remove_temporary_file(tmp_path)
                     return self._find_md_file(output_dir)
                 last_error = RuntimeError(
                     f"PowerShell download returned {result.returncode}"
                 )
-                if tmp_path and os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
+                self._remove_temporary_file(tmp_path)
                 self._log(f"Method 4 (PowerShell) failed: {last_error}")
             except Exception as e:
                 last_error = RuntimeError(self._download_error_kind(e))
-                if tmp_path and os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
+                self._remove_temporary_file(tmp_path)
                 self._log(
                     "Method 4 (PowerShell) failed: "
                     f"{self._download_error_kind(e)}"

@@ -12,7 +12,7 @@
     {
       "id": "ocr-workaround-rendering",
       "path": "patches/babeldoc-v0.6.3-ocr-workaround.patch",
-      "sha256": "A2802D7E9A1AB585F06A46B9B66141E7A47F630A5A382DCA772C292BCF2D833E"
+      "sha256": "160C5C614A126EB6E397EE6F9A1121F1D326D722C633D2B90973AA61264A2FAF"
     }
   ],
   "provider_files": {
