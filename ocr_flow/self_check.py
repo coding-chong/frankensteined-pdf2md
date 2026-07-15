@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional, List, Tuple
 
 import requests
 
+from .config import normalize_umiocr_engine, resolve_umiocr_language
 from .runtime import resolve_babeldoc_runtime, runtime_readiness
 
 
@@ -19,6 +20,87 @@ def create_local_umi_session() -> requests.Session:
     session = requests.Session()
     session.trust_env = False
     return session
+
+
+def _selected_umi_ocr_language(config, expected_language: Optional[str]) -> Optional[str]:
+    """Resolve the document API language expected from a configured service."""
+    if expected_language:
+        return expected_language
+    umiocr = getattr(config, "umiocr", None)
+    if umiocr is None:
+        return None
+    return resolve_umiocr_language(
+        normalize_umiocr_engine(getattr(umiocr, "engine", "paddle")),
+        configured_language=getattr(umiocr, "language", None),
+    )
+
+
+def _umi_ocr_option_values(options: Dict[str, Any], name: str) -> List[str]:
+    """Extract selectable API values from a UMI OCR options response."""
+    option = options.get(name)
+    if not isinstance(option, dict):
+        return []
+    option_list = option.get("optionsList")
+    if not isinstance(option_list, list):
+        return []
+
+    values: List[str] = []
+    for item in option_list:
+        value = item[0] if isinstance(item, (list, tuple)) and item else item
+        if isinstance(value, str):
+            values.append(value)
+    return values
+
+
+def validate_umi_ocr_options(
+    options: Dict[str, Any],
+    config=None,
+    *,
+    expected_language: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """Confirm that the running document API accepts the selected language."""
+    if not isinstance(options, dict):
+        return False, "UMI OCR options response is not a JSON object"
+
+    selected_language = _selected_umi_ocr_language(config, expected_language)
+    if not selected_language:
+        return True, "UMI OCR document options were returned"
+
+    available = _umi_ocr_option_values(options, "ocr.language")
+    engine = normalize_umiocr_engine(
+        getattr(getattr(config, "umiocr", None), "engine", "paddle")
+    )
+    if not available:
+        return (
+            False,
+            "UMI OCR document options do not expose selectable ocr.language values",
+        )
+    if selected_language not in available:
+        listed = ", ".join(repr(value) for value in available)
+        return (
+            False,
+            f"UMI OCR engine {engine!r} expects language {selected_language!r}, "
+            f"but the running service exposes: {listed}",
+        )
+    return True, f"UMI OCR engine {engine!r} accepts {selected_language!r}"
+
+
+def validate_umi_ocr_response(
+    response,
+    config=None,
+    *,
+    expected_language: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """Decode and validate a successful /api/doc/get_options response."""
+    try:
+        options = response.json()
+    except (AttributeError, ValueError) as error:
+        return False, f"UMI OCR options response is not valid JSON: {error}"
+    return validate_umi_ocr_options(
+        options,
+        config,
+        expected_language=expected_language,
+    )
 
 
 def _candidate_umi_roots() -> List[Path]:
@@ -171,7 +253,14 @@ class SelfCheck:
                 timeout=5
             )
             if response.status_code == 200:
-                return {'ok': True, 'message': f'Service running at {url}'}
+                ready, message = validate_umi_ocr_response(response, self.config)
+                if ready:
+                    return {'ok': True, 'message': f'Service running at {url}; {message}'}
+                return {
+                    'ok': False,
+                    'message': f'Service running at {url}, but {message}',
+                    'next_step': 'Check umiocr.engine and the running UMI OCR installation',
+                }
             else:
                 return {'ok': False, 'message': f'Service returned status {response.status_code}'}
         except requests.exceptions.ConnectionError:
@@ -219,16 +308,17 @@ def find_umi_ocr(config=None) -> Optional[str]:
     Returns:
         Path to UMI OCR executable or None if not found.
     """
-    # Check project-local UMI OCR copies first.
-    for item in _iter_local_umi_dirs():
-        exe = item / 'Umi-OCR.exe'
-        if exe.exists():
-            return str(exe)
-
+    # An explicit engine/runtime selection must not be replaced by discovery.
     if config and getattr(config, 'umiocr', None) and config.umiocr.exe_path:
         exe_path = Path(config.umiocr.exe_path)
         if exe_path.exists():
             return config.umiocr.exe_path
+
+    # Project-local copies are the first auto-discovery candidates.
+    for item in _iter_local_umi_dirs():
+        exe = item / 'Umi-OCR.exe'
+        if exe.exists():
+            return str(exe)
 
     # Common names
     names = ['Umi-OCR', 'Umi-OCR.exe', 'umi-ocr']
@@ -325,7 +415,12 @@ def start_umi_ocr(config=None) -> Dict[str, Any]:
         }
 
 
-def ensure_umi_ocr_service(config, timeout_seconds: int = 10) -> Dict[str, Any]:
+def ensure_umi_ocr_service(
+    config,
+    timeout_seconds: int = 10,
+    *,
+    expected_language: Optional[str] = None,
+) -> Dict[str, Any]:
     """Ensure the UMI OCR service is reachable, starting it if needed."""
     url = config.umiocr.url if config else "http://127.0.0.1:1224"
     session = create_local_umi_session()
@@ -333,7 +428,22 @@ def ensure_umi_ocr_service(config, timeout_seconds: int = 10) -> Dict[str, Any]:
     try:
         response = session.get(f"{url}/api/doc/get_options", timeout=5)
         if response.status_code == 200:
-            return {'ok': True, 'message': f'Service running at {url}', 'started': False}
+            ready, message = validate_umi_ocr_response(
+                response,
+                config,
+                expected_language=expected_language,
+            )
+            if ready:
+                return {
+                    'ok': True,
+                    'message': f'Service running at {url}; {message}',
+                    'started': False,
+                }
+            return {
+                'ok': False,
+                'message': f'Service running at {url}, but {message}',
+                'started': False,
+            }
     except requests.exceptions.RequestException:
         pass
 
@@ -349,7 +459,22 @@ def ensure_umi_ocr_service(config, timeout_seconds: int = 10) -> Dict[str, Any]:
         try:
             response = session.get(f"{url}/api/doc/get_options", timeout=2)
             if response.status_code == 200:
-                return {'ok': True, 'message': f'Service started and running at {url}', 'started': True}
+                ready, message = validate_umi_ocr_response(
+                    response,
+                    config,
+                    expected_language=expected_language,
+                )
+                if ready:
+                    return {
+                        'ok': True,
+                        'message': f'Service started and running at {url}; {message}',
+                        'started': True,
+                    }
+                return {
+                    'ok': False,
+                    'message': f'Service started at {url}, but {message}',
+                    'started': True,
+                }
         except requests.exceptions.RequestException:
             pass
         time.sleep(1)

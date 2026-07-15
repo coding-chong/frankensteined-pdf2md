@@ -10,6 +10,7 @@ import subprocess
 import pytest
 
 from ocr_flow import babeldoc_runtime as managed_runtime
+from ocr_flow import runtime
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -159,6 +160,28 @@ def test_umiocr_verifier_reports_hash_mismatch(tmp_path):
     assert verify_umiocr_runtime.verify_runtime(tmp_path, manifest) == [
         "SHA-256 mismatch for runtime.exe"
     ]
+
+
+def test_rapid_manifest_is_selectable_and_verifies_rapid_plugin_assets():
+    """Rapid uses a distinct checked-in manifest rather than Paddle hashes."""
+    manifest_path = runtime.umiocr_manifest_path("rapid")
+    manifest = runtime.load_umiocr_manifest("rapid")
+
+    assert manifest_path.name == "umiocr-rapid-v2.1.5.json"
+    assert manifest["runtime"] == "Umi-OCR Rapid"
+    assert manifest["engine"] == "rapid"
+    assert {
+        entry["path"] for entry in manifest["files"]
+    } >= {
+        "Umi-OCR.exe",
+        "UmiOCR-data/plugins/win7_x64_RapidOCR-json/RapidOCR-json.exe",
+        "UmiOCR-data/plugins/win7_x64_RapidOCR-json/models/configs.txt",
+    }
+
+
+def test_umiocr_manifest_selection_rejects_unknown_engine():
+    with pytest.raises(ValueError, match="umiocr.engine"):
+        runtime.umiocr_manifest_path("unsupported")
 
 
 def test_checkout_python_prefers_windows_environment(tmp_path):

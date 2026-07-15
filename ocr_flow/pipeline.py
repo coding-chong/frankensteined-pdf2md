@@ -269,6 +269,7 @@ class Pipeline:
                             ocr_language=ocr_language or resolve_ocr_language(
                                 document_language=language,
                                 configured_language=self.config.umiocr.language,
+                                engine=self.config.umiocr.engine,
                             ),
                         )
                         self.state_manager.backup_file("ocr", current_pdf)

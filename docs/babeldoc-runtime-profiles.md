@@ -20,9 +20,9 @@ same manifest, lock, and DirectML patch as a source checkout.
 From a Frank OCR checkout after its Python environment is available:
 
 ```powershell
-uv run ocr-flow runtime setup
-uv run ocr-flow runtime smoke --input test_assets\test_page_text.pdf
-uv run ocr-flow runtime status
+uv run --locked --extra windows ocr-flow runtime setup
+uv run --locked --extra windows ocr-flow runtime smoke --input test_assets\test_page_text.pdf
+uv run --locked --extra windows ocr-flow runtime status
 ```
 
 `setup` clones the canonical HTTPS upstream source when the managed checkout
@@ -57,8 +57,8 @@ An existing BabelDOC Git checkout can be used only through this explicit
 normalization command:
 
 ```powershell
-uv run ocr-flow runtime setup --path C:\work\BabelDOC
-uv run ocr-flow runtime smoke --path C:\work\BabelDOC --input test_assets\test_page_text.pdf
+uv run --locked --extra windows ocr-flow runtime setup --path C:\work\BabelDOC
+uv run --locked --extra windows ocr-flow runtime smoke --path C:\work\BabelDOC --input test_assets\test_page_text.pdf
 ```
 
 `runtime setup --path` is destructive: it requires the supplied path to be the
@@ -89,8 +89,8 @@ CPU-safe is the default. On a Windows machine where the user has chosen and
 tested DirectML, install the explicit profile:
 
 ```powershell
-uv run ocr-flow runtime setup --profile windows-directml
-uv run ocr-flow runtime smoke --profile windows-directml --input test_assets\test_page_text.pdf
+uv run --locked --extra windows ocr-flow runtime setup --profile windows-directml
+uv run --locked --extra windows ocr-flow runtime smoke --profile windows-directml --input test_assets\test_page_text.pdf
 ```
 
 The profile installs the locked `directml` extra, reinstalls
@@ -106,8 +106,8 @@ This profile is performance-only, Windows-only, and never the implicit default.
 The same explicit profile applies to an existing Git checkout:
 
 ```powershell
-uv run ocr-flow runtime setup --path C:\work\BabelDOC --profile windows-directml
-uv run ocr-flow runtime smoke --path C:\work\BabelDOC --profile windows-directml --input test_assets\test_page_text.pdf
+uv run --locked --extra windows ocr-flow runtime setup --path C:\work\BabelDOC --profile windows-directml
+uv run --locked --extra windows ocr-flow runtime smoke --path C:\work\BabelDOC --profile windows-directml --input test_assets\test_page_text.pdf
 ```
 
 The CPU-safe profile leaves the pinned upstream source unmodified. Only the
@@ -145,10 +145,27 @@ UMI OCR is separate from BabelDOC. A scanned Conversion Run discovers
 can be verified with:
 
 ```powershell
-uv run python scripts/verify_umiocr_runtime.py --path umiocr_local
-uv run ocr-flow doctor --ocr --start-ocr
+uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path umiocr_local
+uv run --locked --extra windows ocr-flow doctor --ocr --start-ocr
 ```
 
 The UMI manifest verifies its executable, launcher, and English/Chinese model
 configurations; it does not treat a large vendor binary as an undocumented
 source fork.
+
+### CPU-only Rapid Runtime
+
+The Paddle command above selects the backward-compatible default manifest. It
+does not validate Rapid. A CPU-only Windows host must use the separate Rapid
+v2.1.5 manifest and service contract:
+
+~~~powershell
+uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path C:\Tools\Umi-OCR_Rapid_v2.1.5 --engine rapid
+uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --input test_assets\test_page_scanned.pdf --output output\rapid-local-smoke\result.pdf --umiocr C:\Tools\Umi-OCR_Rapid_v2.1.5\Umi-OCR.exe --engine rapid --lang en
+~~~
+
+Rapid accepts English and 简体中文 through the document API, whereas Paddle
+uses model path values. The config engine field and GET /api/doc/get_options
+readiness check prevent the two values from being interchanged. This Umi-OCR
+contract is independent of BabelDOC: Rapid performs scanned OCR; cpu-safe
+BabelDOC performs translation layout inference without DirectML.

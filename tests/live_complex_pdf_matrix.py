@@ -241,6 +241,7 @@ def _require_live_environment() -> tuple[Config, tuple[str, ...], dict[str, str]
 
     source_config = Config.load(config_path)
     umi_override = os.environ.get("OCR_FLOW_LIVE_UMIOCR_EXE")
+    umi_engine_override = os.environ.get("OCR_FLOW_LIVE_UMIOCR_ENGINE")
     ghostscript_override = os.environ.get("OCR_FLOW_LIVE_GHOSTSCRIPT")
     umi_executable = (
         Path(umi_override).expanduser()
@@ -277,6 +278,7 @@ def _require_live_environment() -> tuple[Config, tuple[str, ...], dict[str, str]
     isolated.umiocr.enabled = source_config.umiocr.enabled
     isolated.umiocr.url = source_config.umiocr.url
     isolated.umiocr.language = source_config.umiocr.language
+    isolated.umiocr.engine = umi_engine_override or source_config.umiocr.engine
     isolated.umiocr.exe_path = str(umi_executable.resolve())
     isolated.babeldoc.path = None
     isolated.babeldoc.lang_in = source_config.babeldoc.lang_in
@@ -301,6 +303,7 @@ def _require_live_environment() -> tuple[Config, tuple[str, ...], dict[str, str]
     metadata = {
         "ghostscript_version": version,
         "umiocr_executable": umi_executable.name,
+        "umiocr_engine": isolated.umiocr.engine,
         "translation_model": source_config.babeldoc.openai_model,
     }
     return (

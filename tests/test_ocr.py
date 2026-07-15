@@ -103,7 +103,9 @@ class TestOcrPdf:
 
         ocr_pdf(test_pdf, output_path, mock_config)
 
-        mock_ensure.assert_called_once_with(mock_config)
+        mock_ensure.assert_called_once_with(
+            mock_config, expected_language="models/config_en.txt"
+        )
 
     @patch('ocr_flow.steps.ocr.requests.Session')
     @patch('ocr_flow.steps.ocr.requests.post')
@@ -420,6 +422,25 @@ class TestOcrPdfLanguage:
         """Test unknown document language falls back to configured model."""
         assert resolve_ocr_language(document_language="ja", configured_language="models/config_japan.txt") == "models/config_japan.txt"
 
+    def test_resolve_ocr_language_uses_rapid_document_api_values(self):
+        """Rapid does not accept Paddle model paths as document API values."""
+        assert (
+            resolve_ocr_language(
+                document_language="en",
+                configured_language="models/config_en.txt",
+                engine="rapid",
+            )
+            == "English"
+        )
+        assert (
+            resolve_ocr_language(
+                document_language="zh",
+                configured_language="models/config_chinese.txt",
+                engine="rapid",
+            )
+            == "简体中文"
+        )
+
     def test_resolve_ocr_timeout_defaults_for_small_files(self):
         """Test small files keep the default timeout."""
         assert resolve_ocr_timeout(10) == DEFAULT_OCR_TIMEOUT
@@ -483,3 +504,36 @@ class TestOcrPdfLanguage:
         upload_call = mock_session.post.call_args_list[0]
         upload_payload = json.loads(upload_call.kwargs['data']['json'])
         assert upload_payload['ocr.language'] == "models/config_chinese.txt"
+
+    @patch('ocr_flow.steps.ocr.requests.Session')
+    def test_rapid_engine_sends_rapid_language_value(
+        self, mock_session_cls, temp_dir, test_pdf, mock_ready_umi_service
+    ):
+        """Rapid engine configuration maps the legacy default before upload."""
+        config = Config()
+        config.umiocr.engine = "rapid"
+        config.umiocr.url = "http://127.0.0.1:1224"
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_upload = MagicMock()
+        mock_upload.json.return_value = {"code": 100, "data": "task-123"}
+        mock_poll = MagicMock()
+        mock_poll.json.return_value = {"is_done": True, "state": "success"}
+        mock_download_req = MagicMock()
+        mock_download_req.json.return_value = {
+            "code": 100,
+            "data": "/download/file.pdf",
+        }
+        mock_session.post.side_effect = [mock_upload, mock_poll, mock_download_req]
+        mock_session.get.return_value = MagicMock(content=b"%PDF")
+
+        output_path = temp_dir / "rapid-result.pdf"
+        ocr_pdf(test_pdf, output_path, config)
+
+        upload_call = mock_session.post.call_args_list[0]
+        upload_payload = json.loads(upload_call.kwargs["data"]["json"])
+        assert upload_payload["ocr.language"] == "English"
+        mock_ready_umi_service.assert_called_once_with(
+            config, expected_language="English"
+        )

@@ -1,122 +1,164 @@
 # AI Maintenance Guide
 
-This document is the repository-owned guide for AI maintenance work. It is
-separate from `README.md`, which is written for people installing and using
-OCR Flow. Do not move agent policies or internal maintenance rules into the
-README.
+This is repository-owned maintenance documentation. It is intentionally
+separate from README.md, which is for people installing and using OCR Flow.
+Do not create or track vendor-specific assistant instruction files as a
+substitute for this document.
 
-## Read Before Changing Behavior
+## Required Reading Order
 
-Use the narrowest authoritative source for the change:
+Read in this order before changing behavior or deployment documentation:
 
-| Concern | Source of truth |
-| --- | --- |
-| User commands, setup, and normal output | `README.md` |
-| Pipeline ownership and recovery | `docs/runtime-pipeline.md` |
-| Managed BabelDOC profiles and font behavior | `docs/babeldoc-runtime-profiles.md` |
-| Complex-PDF release matrix | `docs/complex-pdf-live-matrix.md` |
-| Executable matrix contract | Active Trellis workspace specification, when present |
-| Runtime patch and profile contract | Active Trellis workspace runtime-profile specification, when present |
-| Current task scope and acceptance evidence | Active Trellis task artifacts, when present |
+1. README.md for the human entry point and command convention.
+2. docs/fresh-clone-setup.md for Windows clone, external dependencies,
+   CPU-only Rapid, and remote-cost boundaries.
+3. docs/runtime-pipeline.md for stage ownership, output, recovery, and
+   MinerU download boundaries.
+4. docs/babeldoc-runtime-profiles.md for v0.6.3 runtime/profile constraints.
+5. docs/complex-pdf-live-matrix.md for fixture, live-service, and visual
+   validation contracts.
+6. Active Trellis task artifacts and workspace specifications, when present.
+7. The implementation and focused tests named in the ownership table below.
 
-Read the affected implementation and its existing tests before changing a
-contract. Use the Trellis workflow in the workspace root for planning,
-pre-development specifications, checks, spec updates, and commit review.
+The fresh-clone guide is the authoritative human setup procedure. Do not
+duplicate a different install sequence in README or a subsystem document.
 
-## Pipeline Contracts
+## Source Ownership Index
 
-The processing order is fixed:
+| Concern | Owning code | Focused tests or verification |
+| --- | --- | --- |
+| Persisted Umi-OCR engine and language mapping | ocr_flow/config.py | tests/test_config.py |
+| OCR upload payload and selected document language | ocr_flow/steps/ocr.py and ocr_flow/pipeline.py | tests/test_ocr.py and tests/test_pipeline.py |
+| Running Umi-OCR service options/readiness | ocr_flow/self_check.py | tests/test_self_check.py |
+| Umi-OCR engine manifests | ocr_flow/runtime.py and ocr_flow/runtime_profiles | tests/test_runtime_profiles.py and verify_umiocr_runtime.py |
+| Credential-free layered PDF proof | scripts/validate_umiocr_layered_pdf.py | tests/test_umiocr_validation.py plus a real local run |
+| BabelDOC runtime version, patch, and profile state | ocr_flow/babeldoc_runtime.py and ocr_flow/runtime.py | tests/test_runtime_profiles.py and runtime smoke |
+| MinerU result ZIP retrieval | ocr_flow/steps/mineru.py | tests/test_mineru.py; real CDN success is a separate live fact |
+| Markdown image localization | ocr_flow/steps/image_download.py | tests/test_image_download.py |
+| Complex matrix orchestration | scripts/run_live_complex_pdf_matrix.py and tests/live_complex_pdf_matrix.py | tests/test_complex_pdf_assets.py and tests/test_live_matrix_validation.py |
+| Human onboarding content | README.md and docs/fresh-clone-setup.md | Markdown link and command/reference checks |
 
-```text
-input -> OCR for scanned PDFs -> optional translation -> split -> optional
-compression -> MinerU -> Markdown normalization -> image localization
-```
+## Umi-OCR Contract
 
-- Text inputs skip UMI OCR. Scanned inputs must produce a layered OCR PDF
-  before splitting.
-- Translation uses the verified managed BabelDOC runtime when
-  `babeldoc.path` is empty. Do not fall back to a global BabelDOC executable.
-- Translated output is a dual PDF with alternating translated and source
-  pages. It is retained in `intermediate/*.dual.pdf`.
-- Non-translated runs use Ghostscript for split PDFs. Translated runs skip
-  Ghostscript by default to preserve BabelDOC font subsetting; `--compress`
-  explicitly enables it and writes parts to `final/compressed_pdfs/`.
-- MinerU state and completed/failed parts live in `.state.json`. Recover a
-  partial run instead of resubmitting successful parts.
+UmiOcrConfig has an explicit engine. Only paddle and rapid are supported.
+Missing engine remains paddle for backward compatibility. Do not add a third
+engine by adding an unchecked string value; update the central validation,
+mapping, manifest selection, readiness check, matrix isolated config, tests,
+and documentation together.
 
-## Runtime Safety
+| Engine | English document value | Chinese document value | Manifest |
+| --- | --- | --- | --- |
+| paddle | models/config_en.txt | models/config_chinese.txt | umiocr-paddle-v2.1.5.json |
+| rapid | English | 简体中文 | umiocr-rapid-v2.1.5.json |
 
-- `ocr-flow runtime setup` owns only the project-managed runtime.
-- `ocr-flow runtime setup --path <checkout>` is destructive: it can discard
-  tracked, staged, unstaged, and untracked files in the chosen BabelDOC
-  checkout. Never run it without explicit user authorization for that path.
-- Do not hand-edit a managed BabelDOC checkout. Change a versioned profile
-  manifest, lock, and patch together, then validate the selected profile.
-- The OCR workaround preserves source raster only for `figure` and `table`
-  regions. `figure_caption` and `table_caption` remain semantic text and must
-  be translated independently.
+GET /api/doc/get_options is the runtime truth. A file manifest proves that the
+chosen executable/plugin files match an expected release; it does not prove
+that the currently running process at the configured URL is that engine.
+Read the options response before upload and reject a language mismatch.
 
-## Secrets and External Services
+Rapid CPU-only acceptance requires both:
 
-- Never print, commit, or paste MinerU tokens, translation keys, signed upload
-  URLs, or raw credential configs.
-- Use `--config <credential-config>` in examples. The live runner creates a
-  sanitized temporary config and must not modify the supplied config.
-- The complex-PDF matrix makes real UMI OCR, BabelDOC, Ghostscript, MinerU,
-  and translation calls. It consumes API quota; run it only after the user has
-  explicitly approved that cost.
+~~~powershell
+uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path <rapid-root> --engine rapid
+uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --input test_assets\test_page_scanned.pdf --output <local-output.pdf> --umiocr <rapid-root>\Umi-OCR.exe --engine rapid --lang en
+~~~
 
-## Complex PDF Validation
+The local output must have matching page count and extractable text. A mocked
+options response or a unit test never replaces the real layered-PDF result.
 
-The fixed fixture pair is:
+## Fresh Clone and External Boundaries
 
-```text
-test_assets/4_gs_prepress_300dpi.pdf
-test_assets/4_gs_prepress_300dpi_scanned_300dpi.pdf
-```
+The repository tracks source, uv.lock, .python-version, manifests, tests,
+fixture PDFs, and documentation. It deliberately does not track:
 
-Use the offline checks before any service call:
+- user credentials, API_KEYS.md, or credential configs;
+- vendor Umi-OCR binaries and project-local umiocr_local;
+- .venv, managed BabelDOC checkout, output, build artifacts, or egg-info;
+- local PDFs, temporary clones, historical handoffs, and unrelated WIP;
+- vendor-specific assistant files.
 
-```powershell
-uv run python scripts/generate_complex_pdf_scan.py --verify
-uv run pytest tests/test_complex_pdf_assets.py tests/test_live_matrix_validation.py -q
-```
+New-machine setup must use checkout-root commands:
 
-The credentialed command is deliberately separate:
+~~~powershell
+uv python install 3.13.12
+uv sync --locked --extra windows --extra dev
+uv lock --check
+uv run --locked --extra windows ocr-flow --help
+~~~
 
-```powershell
-uv run python scripts/run_live_complex_pdf_matrix.py `
-  --config <credential-config> `
-  --profile cpu-safe
-```
+pythonnet is a locked Windows extra used only for the .NET WebClient fallback
+when MinerU result-ZIP retrieval fails after requests and curl. It is not a
+general proxy package. PySocks is neither imported nor locked and must not be
+introduced into installation instructions without a separately justified code
+path and lock update.
 
-On Windows, use `--all-profiles` only when validating both CPU-safe and
-DirectML. A passed run requires four cases per profile, 24 MinerU parts,
-readable PDFs and Markdown, redacted reports, and human review of contact
-sheets. Automated success alone is insufficient for formula, glyph, and
-layout acceptance.
+MinerU has two separate data flows:
+
+1. Result ZIP retrieval disables inherited proxies and uses the committed
+   requests, curl, .NET WebClient, PowerShell fallback order.
+2. Markdown image localization copies local extracted assets first, then
+   downloads only remote HTTP image URLs.
+
+Do not document, stage, or treat mock coverage as proof for any uncommitted
+public-DNS, proxy, or CDN workaround. A successful mock test is only a
+command-construction contract, not a real network result.
+
+## CPU-only BabelDOC and Matrix Contract
+
+cpu-safe is the only profile named in CPU-only documentation and commands.
+It must not select DirectML or CUDA. windows-directml is explicit optional
+acceleration and must not be selected by inference from host hardware.
+
+The live matrix receives a sanitized temporary config. An explicit Umi-OCR
+executable override must be paired with the intended engine override so its
+isolated config cannot silently retain Paddle. The CPU/Rapid command uses:
+
+~~~powershell
+uv run --locked --extra windows --extra dev python scripts/run_live_complex_pdf_matrix.py --config <credential-config> --ghostscript <gswin64c.exe> --umiocr <rapid-root>\Umi-OCR.exe --umiocr-engine rapid --profile cpu-safe
+~~~
+
+The four cases are text_no_translate, scan_no_translate,
+text_translate_uncompressed, and scan_translate_compressed. One profile makes
+24 MinerU conversions and two translation requests. Request explicit user
+approval immediately before this command; do not infer approval from a prior
+offline test or a prior profile run.
+
+Success requires retained state, Markdown, readable PDFs, redacted report,
+progress log, contact sheets, and human visual inspection. A green pytest exit
+alone is insufficient for formulas, OCR text layers, Chinese glyphs, layout,
+or compressed content.
 
 ## Documentation Ownership
 
-- Update `README.md` for a changed user command, prerequisite, output
-  location, or release-facing validation summary.
-- Update the matching document in `docs/` for detail that would make the
-  README harder to scan.
-- Update this guide for an AI-relevant ownership boundary, safety constraint,
-  or validation gate.
-- Keep the audiences separate. The README may link to human documentation but
-  should not contain agent workflow, internal repair history, or provider
-  specific instructions.
+When behavior changes:
 
-## Completion Checklist
+- Update README.md if a human's first command, prerequisite, or high-level
+  output expectation changes.
+- Update docs/fresh-clone-setup.md for ordered installation, acquisition,
+  version, location, verification, remediation, CPU-only, or cost changes.
+- Update docs/runtime-pipeline.md for pipeline boundaries, output, recovery,
+  config/engine, or MinerU/image ownership changes.
+- Update docs/complex-pdf-live-matrix.md for fixture, case, command, cost,
+  retained evidence, or visual acceptance changes.
+- Update this guide for implementation ownership, AI-maintainer safety, or
+  required validation changes.
+- Update the applicable Trellis specification after the behavior is verified.
 
-Before presenting a change as complete:
+Keep commands checkout-root, locked uv commands. Keep token paths and values
+as placeholders. Never add a claim that a vendor runtime, provider, or network
+path works unless the corresponding real validation evidence exists.
 
-1. Run focused offline tests for the touched behavior.
-2. Run lint/type checks required by the active task.
-3. Inspect `git diff --check` and verify documentation links/paths.
-4. Do not stage generated output, credentials, managed runtimes, or unrelated
-   local PDFs.
-5. When the project is managed by Trellis, record reusable contracts in its
-   workspace specifications and request one-shot commit confirmation before
-   committing.
+## Completion Gate
+
+Before commit or push:
+
+1. Run focused tests for changed runtime/config/document behavior.
+2. Run fixture verify mode after changing assets or matrix contracts.
+3. Run targeted lint/type checks and record pre-existing baseline failures
+   separately from newly introduced failures.
+4. Check links, stale dependency instructions, Git scope, and diff whitespace.
+5. Run the Trellis quality workflow and update the reusable specification.
+6. Review staged paths. Do not stage credentials, vendor binaries, output,
+   local WIP, or unrelated dirty files.
+7. For paid matrix work, stop for a fresh explicit quota approval before
+   execution; for push, require the user authorization already in scope.

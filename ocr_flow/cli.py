@@ -417,7 +417,7 @@ def smoke(input_path: str, profile: str, checkout_path: Optional[Path]):
 )
 @click.option('--compress', is_flag=True, help='Compress translated PDFs (disables font subsetting to preserve CJK encoding)')
 @click.option('--ocr-timeout', type=click.INT, help='Override OCR timeout in seconds for scanned PDFs. Large scanned PDFs auto-extend this by default.')
-@click.option('--ocr-language', type=str, help='Override UMI OCR model path for scanned PDFs. By default, scanned PDFs pick the OCR model from --lang.')
+@click.option('--ocr-language', type=str, help='Override UMI OCR document-API language value for scanned PDFs. By default, --lang is mapped for the configured UMI OCR engine.')
 @click.option('--open-output/--no-open-output', default=None, help='Open output directory after completion. Defaults to prompt in interactive mode and disabled in non-interactive mode.')
 @click.option('--recovery', type=click.Choice(['continue', 'retry', 'continue_retry', 'restart']), default=None, help='Recovery mode for non-interactive mode: continue, retry, continue_retry, restart')
 def process(input_path: str, output: str, config: str, verbose: bool,

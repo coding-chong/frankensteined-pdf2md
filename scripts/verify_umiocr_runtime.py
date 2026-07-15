@@ -12,13 +12,13 @@ from typing import Any, Dict, List
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _default_manifest_path() -> Path:
+def _default_manifest_path(engine: str = "paddle") -> Path:
     """Resolve the package-owned manifest when this source script is run directly."""
     if str(PROJECT_ROOT) not in sys.path:
         sys.path.insert(0, str(PROJECT_ROOT))
-    from ocr_flow.runtime import DEFAULT_UMIOCR_MANIFEST
+    from ocr_flow.runtime import umiocr_manifest_path
 
-    return DEFAULT_UMIOCR_MANIFEST
+    return umiocr_manifest_path(engine)
 
 
 DEFAULT_MANIFEST = _default_manifest_path()
@@ -58,10 +58,16 @@ def verify_runtime(root: Path, manifest: Dict[str, Any]) -> List[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--path", required=True, type=Path, help="UMI OCR root")
-    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    parser.add_argument(
+        "--engine",
+        choices=("paddle", "rapid"),
+        default="paddle",
+        help="Select the checked-in engine manifest unless --manifest is supplied",
+    )
+    parser.add_argument("--manifest", type=Path)
     args = parser.parse_args()
 
-    manifest = load_manifest(args.manifest)
+    manifest = load_manifest(args.manifest or _default_manifest_path(args.engine))
     failures = verify_runtime(args.path.resolve(), manifest)
     if failures:
         print("UMI OCR runtime verification failed:", file=sys.stderr)

@@ -50,6 +50,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Override UMI OCR executable without changing the credential config",
     )
+    parser.add_argument(
+        "--umiocr-engine",
+        choices=("paddle", "rapid"),
+        help="Engine expected from the overridden UMI OCR service",
+    )
     return parser.parse_args()
 
 
@@ -97,6 +102,8 @@ def main() -> int:
             environment["OCR_FLOW_LIVE_UMIOCR_EXE"] = str(
                 args.umiocr.expanduser().resolve()
             )
+        if args.umiocr_engine:
+            environment["OCR_FLOW_LIVE_UMIOCR_ENGINE"] = args.umiocr_engine
 
         result = subprocess.run(
             [

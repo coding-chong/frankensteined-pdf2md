@@ -27,6 +27,14 @@ from ocr_flow.self_check import (
 from ocr_flow.config import Config
 
 
+def _umi_document_options(*languages):
+    return {
+        "ocr.language": {
+            "optionsList": [[language, language] for language in languages]
+        }
+    }
+
+
 # =============================================================================
 # Test Fixtures
 # =============================================================================
@@ -226,6 +234,9 @@ class TestCheckUmiOcr:
         mock_session_cls.return_value = mock_session
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.json.return_value = _umi_document_options(
+            "models/config_en.txt", "models/config_chinese.txt"
+        )
         mock_session.get.return_value = mock_response
 
         checker = SelfCheck(config=mock_config)
@@ -233,6 +244,44 @@ class TestCheckUmiOcr:
 
         assert result['ok'] == True
         assert 'running' in result['message'].lower()
+
+    @patch('ocr_flow.self_check.requests.Session')
+    def test_check_umi_ocr_accepts_rapid_document_options(
+        self, mock_session_cls, mock_config
+    ):
+        """Rapid readiness is based on its own document API values."""
+        mock_config.umiocr.engine = "rapid"
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200)
+        mock_response.json.return_value = _umi_document_options(
+            "English", "简体中文"
+        )
+        mock_session.get.return_value = mock_response
+
+        result = SelfCheck(config=mock_config).check_umi_ocr()
+
+        assert result["ok"] is True
+        assert "English" in result["message"]
+
+    @patch('ocr_flow.self_check.requests.Session')
+    def test_check_umi_ocr_rejects_engine_language_mismatch(
+        self, mock_session_cls, mock_config
+    ):
+        """A running Paddle service cannot satisfy a Rapid configuration."""
+        mock_config.umiocr.engine = "rapid"
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200)
+        mock_response.json.return_value = _umi_document_options(
+            "models/config_en.txt", "models/config_chinese.txt"
+        )
+        mock_session.get.return_value = mock_response
+
+        result = SelfCheck(config=mock_config).check_umi_ocr()
+
+        assert result["ok"] is False
+        assert "expects language 'English'" in result["message"]
 
     @patch('ocr_flow.self_check.requests.Session')
     def test_check_umi_ocr_not_running(self, mock_session_cls, mock_config):
@@ -412,6 +461,23 @@ class TestFindUmiOcr:
         result = find_umi_ocr(mock_config)
         assert result == 'E:/Umi-OCR/Umi-OCR.exe'
 
+    def test_configured_exe_path_overrides_existing_local_copy(
+        self, mock_config, tmp_path, monkeypatch
+    ):
+        """Keep explicit Rapid selection ahead of an auto-discovered Paddle copy."""
+        configured = tmp_path / "rapid" / "Umi-OCR.exe"
+        configured.parent.mkdir()
+        configured.write_text("rapid")
+        local = tmp_path / "umiocr_local"
+        local.mkdir()
+        (local / "Umi-OCR.exe").write_text("paddle")
+        mock_config.umiocr.exe_path = str(configured)
+        monkeypatch.setattr(
+            'ocr_flow.self_check._iter_local_umi_dirs', lambda: [local]
+        )
+
+        assert find_umi_ocr(mock_config) == str(configured)
+
     def test_find_in_path(self, monkeypatch):
         """Test finding UMI OCR in PATH."""
         monkeypatch.setattr('ocr_flow.self_check._iter_local_umi_dirs', lambda: [])
@@ -496,9 +562,13 @@ class TestEnsureUmiOcrService:
 
         mock_session = MagicMock()
         mock_session_cls.return_value = mock_session
+        ready_response = MagicMock(status_code=200)
+        ready_response.json.return_value = _umi_document_options(
+            "models/config_en.txt", "models/config_chinese.txt"
+        )
         mock_session.get.side_effect = [
             requests.exceptions.ConnectionError(),
-            MagicMock(status_code=200),
+            ready_response,
         ]
         mock_start.return_value = {'started': True, 'message': 'Started UMI OCR'}
         mock_config.umiocr.exe_path = 'E:/Umi-OCR/Umi-OCR.exe'
@@ -518,9 +588,13 @@ class TestEnsureUmiOcrService:
         mock_session = MagicMock()
         mock_session_cls.return_value = mock_session
         mock_config.umiocr.exe_path = 'E:/Umi-OCR/Umi-OCR.exe'
+        ready_response = MagicMock(status_code=200)
+        ready_response.json.return_value = _umi_document_options(
+            "models/config_en.txt", "models/config_chinese.txt"
+        )
         mock_session.get.side_effect = [
             requests.exceptions.ConnectionError(),
-            MagicMock(status_code=200),
+            ready_response,
         ]
         mock_start.return_value = {'started': True, 'message': 'Started UMI OCR'}
 

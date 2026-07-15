@@ -9,16 +9,18 @@ from typing import Optional
 
 import requests
 
+from ..config import (
+    UMIOCR_ENGINE_LANGUAGE_VALUES,
+    normalize_umiocr_engine,
+    resolve_umiocr_language,
+)
 from ..self_check import ensure_umi_ocr_service
 
 DEFAULT_OCR_TIMEOUT = 600
 LARGE_FILE_THRESHOLD_MB = 100
 LARGE_FILE_OCR_TIMEOUT = 21600
 
-DOCUMENT_LANGUAGE_TO_OCR_MODEL = {
-    "en": "models/config_en.txt",
-    "zh": "models/config_chinese.txt",
-}
+DOCUMENT_LANGUAGE_TO_OCR_MODEL = UMIOCR_ENGINE_LANGUAGE_VALUES["paddle"]
 
 
 def create_local_umi_session() -> requests.Session:
@@ -28,11 +30,17 @@ def create_local_umi_session() -> requests.Session:
     return session
 
 
-def resolve_ocr_language(document_language: Optional[str] = None, configured_language: Optional[str] = None) -> str:
-    """Resolve the UMI OCR model for the document language."""
-    if document_language in DOCUMENT_LANGUAGE_TO_OCR_MODEL:
-        return DOCUMENT_LANGUAGE_TO_OCR_MODEL[document_language]
-    return configured_language or DOCUMENT_LANGUAGE_TO_OCR_MODEL["en"]
+def resolve_ocr_language(
+    document_language: Optional[str] = None,
+    configured_language: Optional[str] = None,
+    engine: str = "paddle",
+) -> str:
+    """Resolve the UMI OCR document-API language for the selected engine."""
+    return resolve_umiocr_language(
+        normalize_umiocr_engine(engine),
+        document_language=document_language,
+        configured_language=configured_language,
+    )
 
 
 def resolve_ocr_timeout(file_size_mb: float, timeout: Optional[int] = None) -> int:
@@ -81,10 +89,14 @@ def ocr_pdf(
     print(f"  {msg}")
 
     resolved_timeout = resolve_ocr_timeout(file_size_mb, timeout)
-    language = ocr_language or config.umiocr.language
+    engine = normalize_umiocr_engine(config.umiocr.engine)
+    language = ocr_language or resolve_ocr_language(
+        configured_language=config.umiocr.language,
+        engine=engine,
+    )
     url = config.umiocr.url
 
-    msg = f"OCR language model: {language}"
+    msg = f"OCR engine/language: {engine}/{language}"
     if logger:
         logger.info(msg)
     print(f"  {msg}")
@@ -94,7 +106,7 @@ def ocr_pdf(
         logger.info(msg)
     print(f"  {msg}")
 
-    service_result = ensure_umi_ocr_service(config)
+    service_result = ensure_umi_ocr_service(config, expected_language=language)
     if not service_result['ok']:
         raise RuntimeError(service_result['message'])
 

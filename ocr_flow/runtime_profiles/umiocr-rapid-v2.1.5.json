@@ -1,0 +1,38 @@
+{
+  "runtime": "Umi-OCR Rapid",
+  "version": "2.1.5",
+  "platform": "Windows",
+  "engine": "rapid",
+  "files": [
+    {
+      "path": "Umi-OCR.exe",
+      "bytes": 213504,
+      "sha256": "330B87A5F4F72CE07B41B7BEC31246E80DA89E51B6847ECD6BB0A4AD8A8C4742"
+    },
+    {
+      "path": "UmiOCR-data/main.py",
+      "bytes": 5856,
+      "sha256": "125A27E2441FAE50590D234C2C48F9CCAD55744E3C8F49A59BE5BA6279868C36"
+    },
+    {
+      "path": "UmiOCR-data/about.json",
+      "bytes": 4943,
+      "sha256": "FDF6ED42AD9DAEDFF4D8923F4631835F15E4EB34322B9EFF1CFB196CF632EB5E"
+    },
+    {
+      "path": "UmiOCR-data/plugins/win7_x64_RapidOCR-json/RapidOCR-json.exe",
+      "bytes": 16849920,
+      "sha256": "616BD43A4672EE9FCF4D1CA607D7D9EC413B45D489482064D97E00A7EFA9D76E"
+    },
+    {
+      "path": "UmiOCR-data/plugins/win7_x64_RapidOCR-json/rapidocr_config.py",
+      "bytes": 3196,
+      "sha256": "A8DCC22E0A56AC97D6E0FB231E85AD35205181F8E55C94E23F9B5A08408C6A41"
+    },
+    {
+      "path": "UmiOCR-data/plugins/win7_x64_RapidOCR-json/models/configs.txt",
+      "bytes": 768,
+      "sha256": "518F944364AE386419F99DFD0CD1828EE3674217073B239AD7731D5585E534B2"
+    }
+  ]
+}

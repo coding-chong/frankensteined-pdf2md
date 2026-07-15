@@ -308,6 +308,7 @@ class TestPipelineSteps:
         mock_resolve.assert_called_once_with(
             document_language="zh",
             configured_language=mock_config.umiocr.language,
+            engine=mock_config.umiocr.engine,
         )
         assert mock_ocr.call_count == 1
         assert mock_ocr.call_args.kwargs["timeout"] == 1234

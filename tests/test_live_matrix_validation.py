@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from ocr_flow.config import Config
 from tests import live_complex_pdf_matrix as matrix
 
 
@@ -148,3 +149,31 @@ def test_ocr_workaround_visual_anchors_apply_only_to_scanned_cases():
 
     assert "page_5_table_grid" not in text_names
     assert "page_5_table_grid" in scanned_names
+
+
+def test_live_matrix_isolated_config_preserves_rapid_engine_override(
+    monkeypatch, tmp_path
+):
+    """The CPU/Rapid command cannot silently fall back to Paddle in isolation."""
+    credential_config = Config()
+    credential_config.mineru.api_token = "mineru-test-token"
+    credential_config.babeldoc.openai_api_key = "translation-test-key"
+    umi_executable = tmp_path / "Umi-OCR.exe"
+    ghostscript = tmp_path / "gswin64c.exe"
+    umi_executable.write_bytes(b"umi")
+    ghostscript.write_bytes(b"ghostscript")
+    credential_config.umiocr.exe_path = str(umi_executable)
+    credential_config.compress.ghostscript_path = str(ghostscript)
+    config_path = tmp_path / "credentials.toml"
+    credential_config.save(config_path)
+
+    monkeypatch.setenv("OCR_FLOW_LIVE_CONFIG", str(config_path))
+    monkeypatch.setenv("OCR_FLOW_LIVE_UMIOCR_EXE", str(umi_executable))
+    monkeypatch.setenv("OCR_FLOW_LIVE_UMIOCR_ENGINE", "rapid")
+    monkeypatch.delenv("OCR_FLOW_LIVE_GHOSTSCRIPT", raising=False)
+    monkeypatch.setattr(matrix, "_run", lambda *_args, **_kwargs: "10.07.1")
+
+    isolated, _secrets, metadata = matrix._require_live_environment()
+
+    assert isolated.umiocr.engine == "rapid"
+    assert metadata["umiocr_engine"] == "rapid"

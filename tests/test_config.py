@@ -23,7 +23,9 @@ from ocr_flow.config import (
     CompressConfig,
     MinerUConfig,
     PostProcessConfig,
+    normalize_umiocr_engine,
     normalize_primary_font_family,
+    resolve_umiocr_language,
 )
 
 
@@ -63,6 +65,10 @@ class TestUmiOcrConfig:
         config = UmiOcrConfig()
         assert config.language == "models/config_en.txt"
 
+    def test_umiocr_default_engine_is_paddle(self):
+        """Existing configuration files keep Paddle behavior by default."""
+        assert UmiOcrConfig().engine == "paddle"
+
     def test_umiocr_default_enabled(self):
         """Test default enabled state."""
         config = UmiOcrConfig()
@@ -80,11 +86,13 @@ class TestUmiOcrConfig:
             url="http://192.168.1.100:8080",
             language="models/config_chinese.txt",
             exe_path="E:/Umi-OCR/Umi-OCR.exe",
+            engine="rapid",
         )
         assert config.enabled == False
         assert config.url == "http://192.168.1.100:8080"
         assert config.language == "models/config_chinese.txt"
         assert config.exe_path == "E:/Umi-OCR/Umi-OCR.exe"
+        assert config.engine == "rapid"
 
 
 # =============================================================================
@@ -380,6 +388,7 @@ download_images = false
         assert config.umiocr.url == "http://192.168.1.1:1224"
         assert config.umiocr.language == "models/config_chinese.txt"
         assert config.umiocr.exe_path == "E:/Umi-OCR/Umi-OCR.exe"
+        assert config.umiocr.engine == "paddle"
         assert config.babeldoc.path == "/path/to/babeldoc"
         assert config.babeldoc.lang_in == "ja-JP"
         assert config.babeldoc.openai_model == "gpt-4"
@@ -450,6 +459,24 @@ class TestConfigValidation:
             config.openai_api_key = key
             assert config.openai_api_key == key
 
+    def test_umiocr_engine_validation_rejects_unknown_engine(self):
+        """Only checked-in UMI engine contracts may be selected."""
+        with pytest.raises(ValueError, match="umiocr.engine"):
+            UmiOcrConfig(engine="unsupported")
+        with pytest.raises(ValueError, match="umiocr.engine"):
+            normalize_umiocr_engine("rapid-plus")
+
+    def test_rapid_language_mapping_translates_legacy_default(self):
+        """Rapid uses API language names, not Paddle model paths."""
+        assert resolve_umiocr_language("rapid", document_language="en") == "English"
+        assert resolve_umiocr_language("rapid", document_language="zh") == "简体中文"
+        assert (
+            resolve_umiocr_language(
+                "rapid", configured_language="models/config_en.txt"
+            )
+            == "English"
+        )
+
 
 class TestInteractiveConfig:
     """Tests for configuration-wizard runtime selection behavior."""
@@ -467,6 +494,7 @@ class TestInteractiveConfig:
                 config.babeldoc.path,
                 "auto",
                 "",
+                config.umiocr.engine,
                 "",
             ]
         )

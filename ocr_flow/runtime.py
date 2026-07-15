@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from .config import normalize_umiocr_engine
+
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PROFILE_ROOT = PACKAGE_ROOT / "runtime_profiles"
@@ -27,6 +29,10 @@ MANAGED_BABELDOC_PATH = RUNTIME_ROOT / "BabelDOC"
 MANAGED_RUNTIME_STATE_PATH = RUNTIME_ROOT / "babeldoc-runtime-state.json"
 DEFAULT_BABELDOC_MANIFEST = PROFILE_ROOT / "babeldoc-v0.6.3.json"
 DEFAULT_UMIOCR_MANIFEST = PROFILE_ROOT / "umiocr-paddle-v2.1.5.json"
+UMIOCR_MANIFESTS = {
+    "paddle": DEFAULT_UMIOCR_MANIFEST,
+    "rapid": PROFILE_ROOT / "umiocr-rapid-v2.1.5.json",
+}
 
 
 @dataclass(frozen=True)
@@ -42,6 +48,17 @@ def load_babeldoc_manifest(
 ) -> Dict[str, Any]:
     """Load the supported BabelDOC Runtime Profile manifest."""
     with path.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def umiocr_manifest_path(engine: str = "paddle") -> Path:
+    """Return the tracked UMI OCR manifest for one supported engine."""
+    return UMIOCR_MANIFESTS[normalize_umiocr_engine(engine)]
+
+
+def load_umiocr_manifest(engine: str = "paddle") -> Dict[str, Any]:
+    """Load the tracked UMI OCR manifest for one supported engine."""
+    with umiocr_manifest_path(engine).open(encoding="utf-8") as handle:
         return json.load(handle)
 
 

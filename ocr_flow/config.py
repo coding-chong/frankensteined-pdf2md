@@ -5,11 +5,22 @@
 import os
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Dict, Optional
 import click
 
 
 PRIMARY_FONT_FAMILIES = ("serif", "sans-serif", "script")
+UMIOCR_ENGINES = ("paddle", "rapid")
+UMIOCR_ENGINE_LANGUAGE_VALUES: Dict[str, Dict[str, str]] = {
+    "paddle": {
+        "en": "models/config_en.txt",
+        "zh": "models/config_chinese.txt",
+    },
+    "rapid": {
+        "en": "English",
+        "zh": "简体中文",
+    },
+}
 
 
 def normalize_primary_font_family(value: Optional[str]) -> Optional[str]:
@@ -22,6 +33,44 @@ def normalize_primary_font_family(value: Optional[str]) -> Optional[str]:
             f"babeldoc.primary_font_family must be one of {choices}, or empty"
         )
     return value
+
+
+def normalize_umiocr_engine(value: str) -> str:
+    """Normalize and validate the selected UMI OCR engine."""
+    if not isinstance(value, str):
+        raise ValueError("umiocr.engine must be a string")
+    engine = value.strip().lower()
+    if engine not in UMIOCR_ENGINES:
+        choices = ", ".join(UMIOCR_ENGINES)
+        raise ValueError(f"umiocr.engine must be one of {choices}")
+    return engine
+
+
+def resolve_umiocr_language(
+    engine: str,
+    *,
+    document_language: Optional[str] = None,
+    configured_language: Optional[str] = None,
+) -> str:
+    """Resolve a document API language value for the selected UMI engine."""
+    normalized_engine = normalize_umiocr_engine(engine)
+    values = UMIOCR_ENGINE_LANGUAGE_VALUES[normalized_engine]
+    if document_language in values:
+        return values[document_language]
+
+    if configured_language:
+        # Existing configs persisted Paddle model paths before engine selection
+        # existed. Translate only the known English/Chinese defaults when a
+        # user opts into Rapid; preserve custom values for service validation.
+        for language, value in UMIOCR_ENGINE_LANGUAGE_VALUES["paddle"].items():
+            if configured_language == value:
+                return values[language]
+        for language, value in UMIOCR_ENGINE_LANGUAGE_VALUES["rapid"].items():
+            if configured_language == value:
+                return values[language]
+        return configured_language
+
+    return values["en"]
 
 # Try to import tomli (Python 3.11+ has tomllib built-in)
 try:
@@ -46,6 +95,10 @@ class UmiOcrConfig:
     url: str = "http://127.0.0.1:1224"
     language: str = "models/config_en.txt"  # Default: English
     exe_path: Optional[str] = None
+    engine: str = "paddle"
+
+    def __post_init__(self) -> None:
+        self.engine = normalize_umiocr_engine(self.engine)
 
 
 @dataclass
@@ -139,6 +192,9 @@ class Config:
             config.umiocr.language = umi.get('language', config.umiocr.language)
             exe_path_val = umi.get('exe_path', config.umiocr.exe_path)
             config.umiocr.exe_path = exe_path_val if exe_path_val else None
+            config.umiocr.engine = normalize_umiocr_engine(
+                umi.get('engine', config.umiocr.engine)
+            )
 
         # BabelDOC
         if 'babeldoc' in data:
@@ -200,6 +256,7 @@ class Config:
                 'url': self.umiocr.url,
                 'language': self.umiocr.language,
                 'exe_path': self.umiocr.exe_path or '',
+                'engine': normalize_umiocr_engine(self.umiocr.engine),
             },
             'babeldoc': {
                 'path': self.babeldoc.path or '',
@@ -286,6 +343,12 @@ class Config:
         config.compress.ghostscript_path = gs_path if gs_path else None
 
         # UMI OCR exe path
+        engine = click.prompt(
+            "UMI OCR engine",
+            type=click.Choice(UMIOCR_ENGINES),
+            default=config.umiocr.engine,
+        )
+        config.umiocr.engine = normalize_umiocr_engine(engine)
         click.echo(f"Current UMI OCR exe path: {config.umiocr.exe_path or '(auto-discover)'}")
         umi_exe_path = click.prompt("UMI OCR exe path (leave empty for auto-discover)", default=config.umiocr.exe_path or "")
         config.umiocr.exe_path = umi_exe_path if umi_exe_path else None

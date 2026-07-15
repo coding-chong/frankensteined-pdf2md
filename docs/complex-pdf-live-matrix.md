@@ -1,107 +1,113 @@
 # Complex PDF Live Matrix
 
 This is the required real-service regression matrix for OCR Flow. It does not
-mock UMI OCR, BabelDOC, the translation provider, Ghostscript, or MinerU.
+mock Umi-OCR, BabelDOC, the translation provider, Ghostscript, or MinerU.
+Read [fresh-clone-setup.md](fresh-clone-setup.md) for the installation and
+CPU-only Rapid preparation sequence before running anything in this page.
 
-## Assets
+## Tracked Assets and Offline Checks
 
-The matrix uses the following fixed fixtures:
+The following files are Git-tracked and must arrive in every clone:
 
-- `test_assets/4_gs_prepress_300dpi.pdf`: six-page technical paper with
-  equations, circuit diagrams, plots, tables, and dense two-column text.
-- `test_assets/4_gs_prepress_300dpi_scanned_300dpi.pdf`: a 300 DPI,
-  image-only derivative with no text layer.
-- `test_assets/complex_pdf_matrix.json`: hashes, page geometry, scan recipe,
-  and semantic anchors.
+| File | Purpose |
+| --- | --- |
+| test_assets/4_gs_prepress_300dpi.pdf | Six-page technical paper with equations, circuits, plots, tables, and dense columns. |
+| test_assets/4_gs_prepress_300dpi_scanned_300dpi.pdf | 300 DPI image-only derivative with the same page geometry. |
+| test_assets/complex_pdf_matrix.json | Hashes, page geometry, scan recipe, and semantic anchors. |
+| scripts/generate_complex_pdf_scan.py | Deliberate scan regeneration and verify command. |
+| scripts/run_live_complex_pdf_matrix.py | Credentialed matrix runner. |
+| tests/live_complex_pdf_matrix.py | Strict real-service validator. |
+| tests/test_complex_pdf_assets.py | Source/scan byte, geometry, and anchor checks. |
+| tests/test_live_matrix_validation.py | Offline validator and observability checks. |
 
-Verify assets without calling any API:
+Run these before any service call:
 
-```powershell
-uv run python scripts/generate_complex_pdf_scan.py --verify
-uv run pytest tests/test_complex_pdf_assets.py -v
-```
+~~~powershell
+uv run --locked --extra windows python scripts/generate_complex_pdf_scan.py --verify
+uv run --locked --extra windows --extra dev pytest tests/test_complex_pdf_assets.py tests/test_live_matrix_validation.py -q
+~~~
 
-Regenerate the scan only when deliberately updating the fixture:
+The verify command must report six pages and the known scanned fixture. A
+passing offline suite only proves tracked inputs and validator logic; it does
+not prove credentials, remote APIs, Umi-OCR, BabelDOC, or Ghostscript.
 
-```powershell
-uv run python scripts/generate_complex_pdf_scan.py --write --verify
-```
+## Required Cases
 
-## Required Live Run
-
-Use an existing OCR Flow credential config. The runner reads it but never
-modifies it. It creates a temporary config for the live run with an empty
-`babeldoc.path`, so a stale or custom external checkout cannot replace the
-verified managed BabelDOC runtime.
-
-```powershell
-uv run python scripts/run_live_complex_pdf_matrix.py `
-  --config "$env:USERPROFILE\.ocr-flow\config.toml" `
-  --ghostscript "C:\path\to\gswin64c.exe" `
-  --profile cpu-safe
-```
-
-On Windows, validate both BabelDOC profiles:
-
-```powershell
-uv run python scripts/run_live_complex_pdf_matrix.py `
-  --config "$env:USERPROFILE\.ocr-flow\config.toml" `
-  --ghostscript "C:\path\to\gswin64c.exe" `
-  --all-profiles
-```
-
-The runner fails, rather than skips, when a configured credential, UMI OCR
-executable, Ghostscript executable, managed BabelDOC profile, or API call is
-not usable. It never changes a user-supplied BabelDOC Git checkout.
-Omit `--ghostscript` only when `compress.ghostscript_path` or automatic
-discovery already resolves a verified Ghostscript executable.
-
-One profile runs four cases:
+One profile always runs exactly these four cases:
 
 | Case | Input | Translation | Compression | Real services |
 | --- | --- | --- | --- | --- |
-| `text_no_translate` | text fixture | no | pipeline default | Ghostscript, MinerU |
-| `scan_no_translate` | image-only scan | no | pipeline default | UMI OCR, Ghostscript, MinerU |
-| `text_translate_uncompressed` | text fixture | yes | no | BabelDOC, translation API, MinerU |
-| `scan_translate_compressed` | image-only scan | yes | yes | UMI OCR, BabelDOC, translation API, Ghostscript, MinerU |
+| text_no_translate | Text fixture | no | pipeline default | Ghostscript, MinerU |
+| scan_no_translate | Image-only scan | no | pipeline default | Umi-OCR, Ghostscript, MinerU |
+| text_translate_uncompressed | Text fixture | yes | no | BabelDOC, translation API, MinerU |
+| scan_translate_compressed | Image-only scan | yes | yes | Umi-OCR, BabelDOC, translation API, Ghostscript, MinerU |
 
-Each case creates six MinerU parts. One profile therefore consumes 24 MinerU
-conversions and two translation requests. `--all-profiles` doubles that work.
+Each case submits six MinerU parts. One BabelDOC profile therefore consumes
+24 MinerU conversions and two translation requests. This is an API-cost gate,
+not a test to run casually or as a substitute for offline pytest.
 
-## Acceptance Evidence
+## CPU-only Rapid Run
 
-The default retained output directory is
-`output/live_complex_pdf_matrix/<timestamp>/`. It contains one directory per
-profile and case, including:
+Before the command below:
 
-- `.state.json` with the exact stage states and completed MinerU parts;
+1. The user explicitly approves the 24 MinerU conversions and two translation
+   requests for this profile.
+2. Rapid v2.1.5 passes both the selected manifest and layered-PDF local smoke.
+3. BabelDOC cpu-safe setup and smoke pass.
+4. Ghostscript is a real executable that has passed a local compression smoke.
+
+Use cpu-safe plus an explicit Rapid executable and engine:
+
+~~~powershell
+$credentialConfig = "$env:USERPROFILE\.ocr-flow\config.toml"
+$umiRoot = "C:\Tools\Umi-OCR_Rapid_v2.1.5"
+uv run --locked --extra windows --extra dev python scripts/run_live_complex_pdf_matrix.py --config $credentialConfig --ghostscript "C:\path\to\gswin64c.exe" --umiocr "$umiRoot\Umi-OCR.exe" --umiocr-engine rapid --profile cpu-safe --output output\live_complex_pdf_matrix
+~~~
+
+The runner reads the credential config but never modifies it. It creates a
+temporary isolated config, clears babeldoc.path, carries the selected
+umiocr.engine into that config, and selects the managed cpu-safe runtime. A
+Rapid executable without --umiocr-engine rapid would otherwise inherit the
+source config engine, so the explicit flag is required for a portable Rapid
+override.
+
+CPU-only machines must not use --all-profiles. That option runs both cpu-safe
+and Windows DirectML, is Windows-only, and doubles the remote service work.
+Use it only for an explicitly approved DirectML release check.
+
+## Retained Evidence and Human Review
+
+The default retained directory is:
+
+~~~text
+output/live_complex_pdf_matrix/<timestamp>/
+~~~
+
+It contains one directory per profile and case, with:
+
+- runner-summary.json;
+- .state.json for exact stage state and completed MinerU parts;
 - OCR, translated, split, and compressed PDFs;
-- final Markdown from every MinerU part;
-- `live-matrix-report.json` without credentials;
-- `live-progress.log`, which streams redacted subprocess progress during the
-  run and remains available for diagnosis afterward;
-- `visual_review/*.png` contact sheets.
+- final Markdown for all six parts;
+- live-matrix-report.json without credentials;
+- live-progress.log with redacted subprocess output;
+- visual_review PNG contact sheets.
 
-The runner uses pytest output passthrough, so this progress is visible on the
-terminal as well as in the retained log. It redacts configured MinerU and
-translation credentials before either destination receives a line.
+The automated validator checks state transitions, page/part counts, readable
+PDFs, Markdown anchors, CJK composite fonts, formula markers, Ghostscript size
+reduction, OCR text, oversized short OCR spans, noisy bottom-margin spans,
+caption text, and source-ink loss in technical regions. It also verifies
+cpu-safe restoration after a DirectML run.
 
-Review every contact sheet after a successful run:
+After success, a person must still inspect every contact sheet and the
+corresponding PDFs:
 
-1. Formula pages must show both equations, including the `CSC` / `RSC`
-   expressions, without blank regions or overlap.
-2. OCR pages must preserve the scanned page visually and have a usable text
-   layer containing the paper title/topic terms.
-3. Translated pages must show readable Chinese glyphs with no missing-font
-   boxes, while the original/formula pages retain their content.
+1. Formula pages preserve both equations, including CSC and RSC expressions.
+2. Scanned pages retain source raster and expose usable OCR text.
+3. Translated pages use readable Chinese glyphs without missing-font boxes.
+4. Layout has no giant OCR glyph, blank region, collision, or clipped text.
+5. Compressed pages retain the expected content and readable page count.
 
-The runner also enforces page counts, OCR text recognition, CJK text and
-composite font resources, formula markers in Markdown, readable PDF
-intermediates, Ghostscript size reduction, and MinerU completion. For every
-translated case it validates both the BabelDOC dual-page PDF and the
-post-Ghostscript PDFs. It rejects oversized short OCR spans (the signature of
-the previously observed giant black glyph) and compares source-ink coverage in
-fixed formula, circuit, and plot regions on pages 3 and 5. The report records
-those metrics and the contact-sheet paths. Visual inspection remains
-mandatory because a structurally valid PDF can still have poor typography or
-formula layout.
+Exit code zero is not sufficient evidence. A failed run must keep its reports,
+state, PDFs, Markdown, and contact sheets for diagnosis; never hide a failed
+service prerequisite behind a skip or mock result.
