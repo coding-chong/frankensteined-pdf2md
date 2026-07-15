@@ -337,6 +337,7 @@ class TestDownloadImage:
 
         assert success == True
         assert result.endswith(".png") or result.startswith("img_")
+        assert "verify" not in mock_get.call_args.kwargs
 
     @patch('ocr_flow.steps.image_download.requests.get')
     def test_download_failure_404(self, mock_get, temp_dir):

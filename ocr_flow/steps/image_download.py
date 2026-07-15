@@ -117,7 +117,6 @@ def download_image(
                 headers=headers,
                 timeout=timeout,
                 stream=True,
-                verify=False  # Disable SSL verification for CDN compatibility
             )
 
             if response.status_code != 200:

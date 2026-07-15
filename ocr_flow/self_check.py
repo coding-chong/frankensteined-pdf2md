@@ -226,7 +226,7 @@ class SelfCheck:
         # The actual API call will happen during processing
         token = self.config.mineru.api_token
         if token and token != 'your-mineru-api-token-here':
-            return {'ok': True, 'message': f'API token configured ({token[:10]}...)'}
+            return {'ok': True, 'message': 'API token configured'}
 
         return {
             'ok': False,

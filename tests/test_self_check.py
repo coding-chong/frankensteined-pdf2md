@@ -193,6 +193,8 @@ class TestCheckMineruApi:
 
         assert result['ok'] == True
         assert 'configured' in result['message'].lower()
+        assert mock_config.mineru.api_token not in result['message']
+        assert mock_config.mineru.api_token[:10] not in result['message']
 
     def test_check_mineru_not_configured(self, mock_config_no_token):
         """Test when MinerU API token is not configured."""

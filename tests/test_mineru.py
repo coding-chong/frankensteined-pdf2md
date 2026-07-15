@@ -14,10 +14,11 @@ from pathlib import Path
 import tempfile
 import shutil
 import zipfile
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
 
 from ocr_flow.steps.mineru import MinerUClient
-from ocr_flow.config import Config, MinerUConfig
+from ocr_flow.config import Config
 
 
 # =============================================================================
@@ -365,6 +366,8 @@ class TestDownloadAndExtract:
 
         # Should find the markdown file
         assert result is not None
+        assert mock_get.call_args.kwargs["stream"] is True
+        assert "verify" not in mock_get.call_args.kwargs
 
     def test_find_md_file(self, mock_config, temp_dir):
         """Test finding markdown file in output."""
@@ -437,7 +440,7 @@ class TestConvert:
         output_dir.mkdir()
 
         client = MinerUClient(mock_config)
-        result = client.convert(test_pdf, output_dir)
+        client.convert(test_pdf, output_dir)
 
         mock_get_url.assert_called_once()
         mock_upload.assert_called_once()
@@ -514,3 +517,73 @@ class TestUploadAndConvert:
         result = client.upload_and_convert(test_pdf, output_dir)
 
         assert result == temp_dir / "out.md"
+
+
+class TestCdnDownloadFallback:
+    """Tests for the public-DNS CDN fallback used after normal TLS attempts."""
+
+    @patch('ocr_flow.steps.mineru.requests.get')
+    def test_resolve_public_cdn_ipv4_ignores_intercepted_addresses(
+        self, mock_get, mock_config
+    ):
+        response = MagicMock()
+        response.json.return_value = {
+            "Answer": [
+                {"type": 1, "data": "198.18.0.8"},
+                {"type": 1, "data": "8.222.80.133"},
+                {"type": 28, "data": "2001:db8::1"},
+                {"type": 1, "data": "not-an-ip"},
+            ]
+        }
+        mock_get.return_value = response
+
+        client = MinerUClient(mock_config)
+
+        assert client._resolve_public_cdn_ipv4(
+            "cdn-mineru.openxlab.org.cn"
+        ) == ["8.222.80.133"]
+        mock_get.assert_called_once()
+        assert mock_get.call_args.args[0] == "https://dns.google/resolve"
+        assert "verify" not in mock_get.call_args.kwargs
+
+    def test_resolve_public_cdn_ipv4_rejects_non_cdn_hostname(self, mock_config):
+        client = MinerUClient(mock_config)
+
+        assert client._resolve_public_cdn_ipv4("example.com") == []
+
+    @patch.object(MinerUClient, '_resolve_public_cdn_ipv4', return_value=['8.222.80.133'])
+    @patch('ocr_flow.steps.mineru.subprocess.run')
+    def test_resolved_curl_download_uses_hostname_and_public_ip(
+        self, mock_run, mock_resolve, mock_config, temp_dir
+    ):
+        destination = temp_dir / "result.zip"
+
+        def write_archive(command, **_kwargs):
+            output_path = Path(command[command.index('-o') + 1])
+            output_path.write_bytes(b'zip-content')
+            return SimpleNamespace(returncode=0)
+
+        mock_run.side_effect = write_archive
+        client = MinerUClient(mock_config)
+
+        assert client._download_with_resolved_curl(
+            "curl",
+            "https://cdn-mineru.openxlab.org.cn/pdf/result.zip",
+            str(destination),
+        )
+        command = mock_run.call_args.args[0]
+        assert "-k" not in command
+        assert command[command.index('--proto') + 1] == "=https"
+        assert command[command.index('--proto-redir') + 1] == "=https"
+        assert command[command.index('--resolve') + 1] == (
+            "cdn-mineru.openxlab.org.cn:443:8.222.80.133"
+        )
+        assert command[command.index('--noproxy') + 1] == "*"
+
+    def test_download_error_kind_does_not_echo_signed_url(self, mock_config):
+        client = MinerUClient(mock_config)
+        error = RuntimeError(
+            "failed https://cdn.example/result.zip?signature=private-value"
+        )
+
+        assert client._download_error_kind(error) == "RuntimeError"

@@ -6,22 +6,28 @@ import os
 import time
 import zipfile
 import tempfile
-import ssl
 import json
+import ipaddress
+import shutil
+import subprocess
 from pathlib import Path
-from typing import Optional
+from urllib.parse import urlparse
 
 import requests
-import urllib3
 
-# Disable SSL warnings for CDN downloads
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+PUBLIC_DNS_RESOLVER = "https://dns.google/resolve"
 
 
 class MinerUClient:
     """Client for MinerU API."""
 
     BASE_URL = "https://mineru.net/api/v4"
+
+    @staticmethod
+    def _download_error_kind(error: BaseException) -> str:
+        """Describe a download failure without echoing a signed URL."""
+        return type(error).__name__
 
     def __init__(self, config, logger=None):
         """Initialize client with config."""
@@ -222,6 +228,80 @@ class MinerUClient:
                 self._log(f"Poll error: {e}, retrying...")
                 time.sleep(self.poll_interval)
 
+    @staticmethod
+    def _resolve_public_cdn_ipv4(hostname: str) -> list[str]:
+        """Resolve public CDN IPv4 records when local DNS is intercepted."""
+        if not hostname.endswith(".openxlab.org.cn"):
+            return []
+        try:
+            response = requests.get(
+                PUBLIC_DNS_RESOLVER,
+                params={"name": hostname, "type": "A"},
+                timeout=15,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (
+            requests.exceptions.RequestException,
+            ValueError,
+            KeyError,
+            TypeError,
+        ):
+            return []
+
+        addresses = []
+        for answer in payload.get("Answer", []):
+            if answer.get("type") != 1:
+                continue
+            try:
+                address = ipaddress.ip_address(answer.get("data", ""))
+            except ValueError:
+                continue
+            if address.version == 4 and address.is_global:
+                addresses.append(str(address))
+        return list(dict.fromkeys(addresses))
+
+    def _download_with_resolved_curl(
+        self, curl_path: str, zip_url: str, temporary_path: str
+    ) -> bool:
+        """Download a CDN ZIP through a public-DNS IP without proxy DNS."""
+        parsed = urlparse(zip_url)
+        hostname = parsed.hostname
+        if parsed.scheme != "https" or not hostname:
+            return False
+
+        for address in self._resolve_public_cdn_ipv4(hostname):
+            if os.path.exists(temporary_path):
+                os.unlink(temporary_path)
+            command = [
+                curl_path,
+                "-L",
+                "--fail",
+                "--proto",
+                "=https",
+                "--proto-redir",
+                "=https",
+                "--noproxy",
+                "*",
+                "--resolve",
+                f"{hostname}:443:{address}",
+                "-o",
+                temporary_path,
+                zip_url,
+            ]
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                timeout=120,
+            )
+            if (
+                result.returncode == 0
+                and os.path.exists(temporary_path)
+                and os.path.getsize(temporary_path) > 0
+            ):
+                return True
+        return False
+
     def _download_and_extract(self, zip_url: str, output_dir: Path) -> Path:
         """Download and extract the result ZIP.
 
@@ -229,34 +309,17 @@ class MinerUClient:
         """
         last_error = None
         tmp_path = None
+        curl_path = shutil.which('curl')
 
         self._log("Downloading result...")
 
-        # Method 1: Try requests with custom SSL (most reliable)
-        # NOTE: Don't use proxy for MinerU CDN due to SSL certificate issues
+        # Method 1: requests honors the system CA store and environment proxy.
         try:
-            from requests.adapters import HTTPAdapter
-            from urllib3.util.ssl_ import create_urllib3_context
-
-            class SSLAdapter(HTTPAdapter):
-                def init_poolmanager(self, *args, **kwargs):
-                    ctx = create_urllib3_context()
-                    ctx.check_hostname = False
-                    ctx.verify_mode = ssl.CERT_NONE
-                    ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT
-                    ctx.minimum_version = ssl.TLSVersion.TLSv1
-                    ctx.maximum_version = ssl.TLSVersion.MAXIMUM_SUPPORTED
-                    kwargs['ssl_context'] = ctx
-                    return super().init_poolmanager(*args, **kwargs)
-
             session = requests.Session()
-            session.mount('https://', SSLAdapter())
-            # Don't use proxy for MinerU CDN (SSL issues with proxy CONNECT tunnel)
-            session.trust_env = False  # Disable environment-based proxy settings
 
             with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
                 tmp_path = tmp.name
-                response = session.get(zip_url, timeout=120, verify=False, stream=True)
+                response = session.get(zip_url, timeout=120, stream=True)
                 response.raise_for_status()
                 for chunk in response.iter_content(chunk_size=8192):
                     tmp.write(chunk)
@@ -268,38 +331,25 @@ class MinerUClient:
             return self._find_md_file(output_dir)
 
         except Exception as e:
-            last_error = e
+            last_error = RuntimeError(self._download_error_kind(e))
             if tmp_path and os.path.exists(tmp_path):
                 os.unlink(tmp_path)
-            self._log(f"Method 1 (requests) failed: {e}")
+            self._log(
+                f"Method 1 (requests) failed: {self._download_error_kind(e)}"
+            )
 
-        # Method 2: Try curl with -k flag (skip SSL verification)
-        # NOTE: Don't use proxy for MinerU CDN due to SSL issues with CONNECT tunnel
+        # Method 2: curl also preserves certificate and proxy policy.
         try:
-            import shutil
-            import subprocess
-            curl_path = shutil.which('curl')
             if curl_path:
                 with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
                     tmp_path = tmp.name
 
-                # Don't use proxy - curl -k doesn't work through proxy CONNECT tunnel
-                # Create a clean environment without proxy settings
-                env = os.environ.copy()
-                env.pop('http_proxy', None)
-                env.pop('https_proxy', None)
-                env.pop('all_proxy', None)
-                env.pop('HTTP_PROXY', None)
-                env.pop('HTTPS_PROXY', None)
-                env.pop('ALL_PROXY', None)
-
-                curl_cmd = [curl_path, '-L', '-k', '-o', tmp_path, zip_url]
+                curl_cmd = [curl_path, '-L', '--fail', '-o', tmp_path, zip_url]
 
                 result = subprocess.run(
                     curl_cmd,
                     capture_output=True,
                     timeout=120,
-                    env=env  # Use clean environment without proxy
                 )
                 if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
                     with zipfile.ZipFile(tmp_path, 'r') as zf:
@@ -311,31 +361,47 @@ class MinerUClient:
             else:
                 self._log("Method 2 (curl) skipped: curl not found")
         except Exception as e:
-            self._log(f"Method 2 (curl) failed: {e}")
+            last_error = RuntimeError(self._download_error_kind(e))
+            self._log(f"Method 2 (curl) failed: {self._download_error_kind(e)}")
 
-        # Method 3: Try .NET WebClient (Windows only, may have SSL issues)
+        # Method 2b: use public DNS when the local resolver intercepts the CDN.
+        try:
+            if curl_path:
+                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                    tmp_path = tmp.name
+
+                if self._download_with_resolved_curl(curl_path, zip_url, tmp_path):
+                    self._log(
+                        "Method 2b (certificate-validating direct CDN fallback) succeeded"
+                    )
+                    with zipfile.ZipFile(tmp_path, 'r') as zf:
+                        zf.extractall(output_dir)
+                    os.unlink(tmp_path)
+                    return self._find_md_file(output_dir)
+
+                last_error = RuntimeError(
+                    "curl with public DNS did not produce a CDN result"
+                )
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                self._log("Method 2b (curl with public DNS) failed")
+            else:
+                self._log("Method 2b (curl with public DNS) skipped: curl not found")
+        except Exception as e:
+            last_error = RuntimeError(self._download_error_kind(e))
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            self._log(
+                "Method 2b (curl with public DNS) failed: "
+                f"{self._download_error_kind(e)}"
+            )
+
+        # Method 3: .NET WebClient uses Windows proxy and certificate policy.
         if os.name == 'nt':
             try:
                 import clr
                 clr.AddReference('System.Net')
-                from System.Net import WebClient, SecurityProtocolType, ServicePointManager
-                from System import Func, Boolean, Object
-                from System.Security.Cryptography.X509Certificates import X509Certificate2
-                from System.Net.Security import SslPolicyErrors
-
-                # Configure TLS
-                ServicePointManager.SecurityProtocol = (
-                    SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls
-                )
-
-                # Create a proper delegate for certificate validation
-                def validate_cert(sender, certificate, chain, errors):
-                    return True
-
-                # Set the callback using a proper delegate type
-                from System.Net.Security import RemoteCertificateValidationCallback
-                callback = RemoteCertificateValidationCallback(validate_cert)
-                ServicePointManager.ServerCertificateValidationCallback = callback
+                from System.Net import WebClient
 
                 with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
                     tmp_path = tmp.name
@@ -350,10 +416,13 @@ class MinerUClient:
                     return self._find_md_file(output_dir)
 
             except Exception as e:
-                last_error = e
+                last_error = RuntimeError(self._download_error_kind(e))
                 if tmp_path and os.path.exists(tmp_path):
                     os.unlink(tmp_path)
-                self._log(f"Method 3 (.NET WebClient) failed: {e}")
+                self._log(
+                    "Method 3 (.NET WebClient) failed: "
+                    f"{self._download_error_kind(e)}"
+                )
 
         # Method 4: Try PowerShell (uses Windows Schannel)
         if os.name == 'nt':
@@ -361,29 +430,15 @@ class MinerUClient:
                 with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
                     tmp_path = tmp.name
 
-                ps_cmd = f'''
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
-                try {{
-                    Invoke-WebRequest -Uri "{zip_url}" -OutFile "{tmp_path}" -UseBasicParsing
-                }} catch {{
-                    # Try with ServerCertificateValidationCallback
-                    add-type @"
-using System.Net;
-using System.Security.Cryptography.X509Certificates;
-public class TrustAllCertsPolicy {{
-    public static void TrustAll() {{
-        ServicePointManager.ServerCertificateValidationCallback = (sender, cert, chain, errors) => true;
-    }}
-}}
-"@
-[TrustAllCertsPolicy]::TrustAll()
-                    Invoke-WebRequest -Uri "{zip_url}" -OutFile "{tmp_path}" -UseBasicParsing
-                }}
-                '''
+                ps_cmd = (
+                    f'Invoke-WebRequest -Uri "{zip_url}" '
+                    f'-OutFile "{tmp_path}" -UseBasicParsing'
+                )
 
                 result = subprocess.run(
                     ['powershell', '-Command', ps_cmd],
                     capture_output=True,
+                    text=True,
                     timeout=120
                 )
                 if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
@@ -391,8 +446,20 @@ public class TrustAllCertsPolicy {{
                         zf.extractall(output_dir)
                     os.unlink(tmp_path)
                     return self._find_md_file(output_dir)
+                last_error = RuntimeError(
+                    f"PowerShell download returned {result.returncode}"
+                )
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                self._log(f"Method 4 (PowerShell) failed: {last_error}")
             except Exception as e:
-                self._log(f"Method 4 (PowerShell) failed: {e}")
+                last_error = RuntimeError(self._download_error_kind(e))
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                self._log(
+                    "Method 4 (PowerShell) failed: "
+                    f"{self._download_error_kind(e)}"
+                )
 
         raise RuntimeError(f"All download methods failed. Last error: {last_error}")
 

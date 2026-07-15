@@ -66,7 +66,7 @@ def check_url_accessible(url: str, timeout: int = 10) -> bool:
         True if URL returns 200 OK
     """
     try:
-        response = requests.head(url, timeout=timeout, verify=False)
+        response = requests.head(url, timeout=timeout)
         return response.status_code == 200
     except:
         return False
@@ -77,7 +77,6 @@ def download_file(
     output_path,
     timeout: int = 120,
     chunk_size: int = 8192,
-    verify_ssl: bool = False,
 ) -> int:
     """Download a file from URL.
 
@@ -86,7 +85,6 @@ def download_file(
         output_path: Path to save file
         timeout: Request timeout
         chunk_size: Download chunk size
-        verify_ssl: Whether to verify SSL certificate
 
     Returns:
         Number of bytes downloaded
@@ -95,7 +93,6 @@ def download_file(
         url,
         stream=True,
         timeout=timeout,
-        verify=verify_ssl
     )
     response.raise_for_status()
 
