@@ -1,7 +1,11 @@
-# OCR Flow AI-Friendly CLI and Docs Design
+# coding-chong/frankensteined-pdf2md: Historical AI-Friendly CLI and Documentation Design
 
 **Date:** 2026-05-10
 **Status:** Ready for user review
+
+> Historical design context only. It is not an active agent instruction; use
+> [docs/ai-maintenance-guide.md](../../ai-maintenance-guide.md) and current
+> Trellis task artifacts for repository maintenance.
 
 ## Goal
 

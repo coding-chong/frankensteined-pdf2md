@@ -21,8 +21,11 @@ Read in this order before changing behavior or deployment documentation:
 6. Active Trellis task artifacts and workspace specifications, when present.
 7. The implementation and focused tests named in the ownership table below.
 
-The fresh-clone guide is the authoritative human setup procedure. Do not
-duplicate a different install sequence in README or a subsystem document.
+README is the canonical complete human workflow. The fresh-clone guide owns
+the detailed new-machine, CPU-only Rapid, acquisition, and diagnostic
+extension. Keep shared commands aligned; do not create a competing installation
+sequence in a subsystem document or treat either page as a replacement for the
+other.
 
 ## Source Ownership Index
 

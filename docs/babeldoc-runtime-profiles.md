@@ -1,8 +1,10 @@
 # coding-chong/frankensteined-pdf2md: BabelDOC Runtime Profiles
 
 coding-chong/frankensteined-pdf2md owns the default BabelDOC Runtime used by Translation Enrichment. A
-normal user does not clone BabelDOC, configure an absolute path, or patch
-backend source. The supported runtime is BabelDOC `v0.6.3` at
+normal user only needs the commands in Normal Setup; external checkouts and
+DirectML are advanced operator operations. A normal user does not clone
+BabelDOC, configure an absolute path, or patch backend source. The supported
+runtime is BabelDOC `v0.6.3` at
 `28f784ca6b437dbba040bfd9c67110373cd0924b`, installed below the checkout at:
 
 ```text
@@ -26,7 +28,7 @@ uv run --locked --extra windows ocr-flow runtime status
 ```
 
 `setup` clones the canonical HTTPS upstream source when the managed checkout
-is absent. On every invocation it cleans the Frank-owned runtime directory,
+is absent. On every invocation it cleans the project-managed runtime directory,
 force-checks out the exact pinned revision, copies the profile-owned lock file,
 runs `uv sync --locked`, verifies the BabelDOC CLI, and records a local setup
 marker. A prior managed branch, version, DirectML patch, or generated file is

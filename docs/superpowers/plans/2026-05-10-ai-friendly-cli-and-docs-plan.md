@@ -1,6 +1,9 @@
-# AI-Friendly CLI and Docs Implementation Plan
+# coding-chong/frankensteined-pdf2md: Historical AI-Friendly CLI and Documentation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Historical planning artifact. It is not an active agent instruction or a
+> substitute for [docs/ai-maintenance-guide.md](../../ai-maintenance-guide.md).
+> Follow the repository-neutral maintenance guide and current Trellis task
+> artifacts for present work.
 
 **Goal:** 让 OCR Flow 仅靠仓库内的 README、CLI help、缺参报错和 doctor 输出，就能让 AI 与人类首次进入仓库时写对命令、修正错误并理解翻译中间产物的位置。
 

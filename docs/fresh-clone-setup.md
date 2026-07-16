@@ -1,6 +1,8 @@
 # coding-chong/frankensteined-pdf2md: Windows 新机：从 Clone 到 CPU-only Rapid 验证
 
-本页是 Windows x64 新机器的唯一按序安装手册。先完成本页，再看
+本页是 Windows x64 新机器、CPU-only Rapid 和部署诊断的详细准备手册。完整的人类
+转换流程在 [README.md](../README.md)；本页扩展新机安装、组件获取和验证，不取代
+README 的步骤 1 到 7。完成本页所需部分后，再按需要阅读
 [运行时与输出契约](runtime-pipeline.md)、[BabelDOC profile](babeldoc-runtime-profiles.md)
 和 [复杂 PDF 矩阵](complex-pdf-live-matrix.md)。
 
@@ -141,7 +143,9 @@ uv run --locked --extra windows python -c "from pathlib import Path; import fitz
 必须先让 `doctor` 找到可用的 Ghostscript。完整四案例矩阵同时包含非翻译压缩和
 翻译压缩案例，所以矩阵始终要求 Ghostscript。
 
-## 5. 正常处理命令
+## 5. 新机验证用处理命令
+
+这些是新机 smoke 和诊断命令。日常完整处理、输出检查和恢复路径以 README 为准。
 
 ### 统一部署预检
 

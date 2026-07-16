@@ -1,8 +1,11 @@
 # coding-chong/frankensteined-pdf2md: Runtime Pipeline
 
-This document defines the executable PDF-to-Markdown path, its ownership
-boundaries, and the retained evidence for one Conversion Run. For an ordered
-Windows installation use [fresh-clone-setup.md](fresh-clone-setup.md) first.
+This document is for advanced operators and maintainers. It defines the
+executable PDF-to-Markdown path, its ownership boundaries, and the retained
+evidence for one Conversion Run. People running a normal conversion should
+follow the complete workflow in [README.md](../README.md); use
+[fresh-clone-setup.md](fresh-clone-setup.md) for detailed new-machine and
+CPU-only Rapid preparation.
 
 ## Dependency Ownership
 
@@ -130,15 +133,20 @@ progress, and retained reports.
 
 Result ZIP retrieval belongs to ocr_flow.steps.mineru. The committed chain is:
 
-1. custom TLS requests with environment proxy settings disabled;
-2. curl with proxy environment variables removed;
-3. Windows .NET WebClient when pythonnet/.NET is available;
-4. Windows PowerShell.
+1. requests, preserving the system CA store and environment proxy policy;
+2. curl, also preserving certificate and proxy policy;
+3. only after those standard paths fail, an OpenXLab CDN-specific direct
+   fallback that resolves a public IPv4 over HTTPS DoH and uses
+   `curl --noproxy * --resolve`; hostname, SNI, certificate validation and
+   HTTPS-only redirects remain required;
+4. Windows .NET WebClient, preserving Windows proxy and certificate policy;
+5. Windows PowerShell, preserving its normal policy.
 
 These are alternatives for the result ZIP only. curl and PowerShell are
-opportunistic Windows tools, not installation prerequisites. The ZIP path
-intentionally avoids inherited proxies because CONNECT/TLS failures were an
-observed boundary.
+opportunistic Windows tools, not installation prerequisites. Never remove
+global proxy variables, disable certificate validation, use `curl -k`, or add
+an unverified DNS workaround. A network that needs those changes is
+unsupported or `UNVERIFIED` until a separately evidenced secure design exists.
 
 Markdown image localization belongs to ocr_flow.steps.image_download. It first
 copies relative image assets already extracted from the result package, then

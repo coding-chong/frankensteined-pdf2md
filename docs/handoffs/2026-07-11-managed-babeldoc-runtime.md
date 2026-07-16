@@ -1,4 +1,4 @@
-# Managed BabelDOC Runtime Handoff
+# coding-chong/frankensteined-pdf2md: Historical Managed BabelDOC Runtime Handoff
 
 ## Purpose
 
@@ -10,7 +10,7 @@ record; do not recreate them here.
 
 ## Current Outcome
 
-- Frank OCR now has an implemented, uncommitted BabelDOC `v0.6.3` managed
+- coding-chong/frankensteined-pdf2md now has an implemented, uncommitted BabelDOC `v0.6.3` managed
   runtime design. It owns `.ocr-flow-runtime/BabelDOC`; a normal user does not
   need an existing BabelDOC checkout or `babeldoc.path`.
 - `ocr-flow runtime setup`, `status`, and `smoke` have been added. The default

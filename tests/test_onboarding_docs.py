@@ -19,6 +19,7 @@ def test_readme_leads_new_clones_to_the_authoritative_setup_guide():
     )
     assert "PySocks" not in readme
     assert "uv run --locked --extra windows ocr-flow process" in readme
+    assert "完整转换的顺序" in readme
 
 
 def test_readme_distinguishes_umiocr_engines_and_names_upstreams():
@@ -55,10 +56,11 @@ def test_readme_translation_row_names_actual_dependencies():
         "v0.6.3",
         "DashScope",
         "qwen3.5-flash",
+        "默认示例",
     ):
         assert expected in translation_row
     assert "BabelDOC cpu-safe runtime" not in translation_row
-    assert "翻译 key" not in translation_row
+    assert "兼容 OpenAI API 的翻译服务 key" in translation_row
 
 
 def test_product_docs_distinguish_repository_package_and_cli_names():
@@ -119,6 +121,45 @@ def test_ai_guide_is_repository_neutral_and_indexes_runtime_owners():
     assert "scripts/validate_umiocr_layered_pdf.py" in guide
     assert "vendor-specific assistant instruction files" in guide
     assert "CLAUDE.md" not in guide
+
+
+def test_docs_define_noncompeting_human_and_maintenance_audiences():
+    readme = _read("README.md")
+    setup = _read("docs/fresh-clone-setup.md")
+    runtime = _read("docs/runtime-pipeline.md")
+    profiles = _read("docs/babeldoc-runtime-profiles.md")
+    matrix = _read("docs/complex-pdf-live-matrix.md")
+    ai_guide = _read("docs/ai-maintenance-guide.md")
+
+    assert "完整转换的顺序" in readme
+    assert "不取代\nREADME" in setup
+    assert "advanced operators and maintainers" in runtime
+    assert "advanced operator operations" in profiles
+    assert "release operators and\nmaintainers" in matrix
+    assert "canonical complete human workflow" in ai_guide
+
+
+def test_runtime_network_contract_preserves_tls_and_proxy_policy():
+    runtime = _read("docs/runtime-pipeline.md")
+
+    assert "preserving the system CA store and environment proxy policy" in runtime
+    assert "curl --noproxy * --resolve" in runtime
+    assert "environment proxy settings disabled" not in runtime
+    assert "proxy environment variables removed" not in runtime
+    assert "Never remove\nglobal proxy variables, disable certificate validation, use `curl -k`" in runtime
+
+
+def test_historical_agent_material_is_neutral_and_canonically_named():
+    plan = _read("docs/superpowers/plans/2026-05-10-ai-friendly-cli-and-docs-plan.md")
+    design = _read("docs/superpowers/specs/2026-05-10-ai-friendly-cli-and-docs-design.md")
+    handoff = _read("docs/handoffs/2026-07-11-managed-babeldoc-runtime.md")
+
+    for document in (plan, design, handoff):
+        assert document.startswith("# coding-chong/frankensteined-pdf2md:")
+    assert "Historical planning artifact" in plan
+    assert "REQUIRED SUB-SKILL" not in plan
+    assert "superpowers:" not in plan
+    assert "Frank-owned" not in _read("docs/babeldoc-runtime-profiles.md")
 
 
 def test_python_version_file_matches_the_documented_uv_interpreter():

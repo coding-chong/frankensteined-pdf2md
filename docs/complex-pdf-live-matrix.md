@@ -1,9 +1,11 @@
 # coding-chong/frankensteined-pdf2md: Complex PDF Live Matrix
 
-This is the required real-service regression matrix for coding-chong/frankensteined-pdf2md. It does not
-mock Umi-OCR, BabelDOC, the translation provider, Ghostscript, or MinerU.
-Read [fresh-clone-setup.md](fresh-clone-setup.md) for the installation and
-CPU-only Rapid preparation sequence before running anything in this page.
+This is the required real-service regression matrix for release operators and
+maintainers of coding-chong/frankensteined-pdf2md. It is not part of a normal
+user conversion and does not mock Umi-OCR, BabelDOC, the translation provider,
+Ghostscript, or MinerU. Read [fresh-clone-setup.md](fresh-clone-setup.md) for
+the installation and CPU-only Rapid preparation sequence before running
+anything in this page.
 
 ## Tracked Assets and Offline Checks
 
