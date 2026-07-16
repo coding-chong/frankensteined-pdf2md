@@ -1,109 +1,151 @@
 # OCR Flow
 
-OCR Flow 将技术 PDF 转为可恢复、可审计的 Markdown。它支持文字 PDF、扫描 PDF
-的 Umi-OCR 分层文本、可选 BabelDOC 翻译、Ghostscript 压缩和 MinerU 结构化
-转换。
+OCR Flow 将技术 PDF 转为可恢复、可审计的 Markdown，面向芯片手册、数据
+手册和同类技术文档。它可以处理带文字层的 PDF，也可以先为扫描件生成 OCR
+文字层；可选地保留 BabelDOC 的双语 PDF，再通过 MinerU 生成带本地图片的
+Markdown。
 
-## 先读这里
+这是一个 Windows x64 工具。每次 `process` 都会调用 MinerU，需要用户自己的
+token 和账户额度；使用 `--translate` 还需要兼容 OpenAI API 的翻译服务 key。
+本 README 按一次完整转换的顺序说明：准备环境、配置、预检、处理、检查产物和
+恢复。所有命令都应在本仓库 checkout 根目录执行。
 
-新 Windows 电脑或新 clone 必须先完成
+## 处理前先判断
+
+| 你的 PDF 或目标 | 需要的组件 | 从哪里开始 |
+| --- | --- | --- |
+| 带可选中文字的文字 PDF，不翻译 | MinerU、Ghostscript | 从步骤 1 顺序完成到步骤 4 |
+| 扫描件或图片 PDF，不翻译 | MinerU、Ghostscript、Umi-OCR Rapid | 从步骤 1 顺序完成到步骤 4 |
+| 需要翻译并保留双语 PDF | MinerU、BabelDOC cpu-safe runtime、翻译 key | 从步骤 1 顺序完成到步骤 4 |
+
+扫描件是否需要 OCR，不以文件名判断：无法在 PDF 阅读器中选中正文文字时，按
+扫描件处理。`--lang en` 和 `--lang zh` 是源文档语言；非交互命令必须同时指定
+`--lang` 与 `--translate` 或 `--no-translate`。
+
+## 1. 准备 checkout
+
+先安装 Git for Windows 和 [uv](https://docs.astral.sh/uv/)，然后在 PowerShell
+中执行：
+
+~~~powershell
+git clone https://github.com/coding-chong/frankensteined-pdf2md.git
+Set-Location frankensteined-pdf2md
+uv python install 3.13.12
+uv sync --locked --extra windows
+uv lock --check
+uv run --locked --extra windows ocr-flow --help
+~~~
+
+最后一条应显示 `config`、`doctor`、`process` 和 `runtime` 子命令。不要进入
+`ocr_flow` 子目录安装，也不要全局安装 `ocr-flow` 或手动创建项目虚拟环境；这些
+方式会绕开仓库锁定的依赖。
+
+新 Windows 机器的完整安装顺序、外部程序下载位置、版本边界和本地验证在
 [Windows 新机：从 Clone 到 CPU-only Rapid 验证](docs/fresh-clone-setup.md)。
-该文档是安装顺序、版本、外部依赖、CPU-only Rapid、离线 fixture 和完整矩阵的
-唯一权威来源。
 
-不要从 ocr_flow 子目录安装，不要全局安装 ocr-flow，也不要把本地 .venv、
-umiocr_local、.ocr-flow-runtime、output 或凭据复制进新 clone。所有命令从本
-checkout 根目录通过锁定的 uv 运行。
+## 2. 安装外部组件并配置账户
 
-## 文档导航
-
-| 目标 | 先读 |
-| --- | --- |
-| 在新电脑安装、配置、CPU-only Rapid 验证 | [fresh-clone-setup.md](docs/fresh-clone-setup.md) |
-| 理解处理阶段、输出和恢复 | [runtime-pipeline.md](docs/runtime-pipeline.md) |
-| 管理固定 BabelDOC v0.6.3、CPU-safe 和 DirectML profile | [babeldoc-runtime-profiles.md](docs/babeldoc-runtime-profiles.md) |
-| 执行或审阅六页复杂 PDF 的真实服务矩阵 | [complex-pdf-live-matrix.md](docs/complex-pdf-live-matrix.md) |
-| 维护仓库、测试和外部服务边界 | [ai-maintenance-guide.md](docs/ai-maintenance-guide.md) |
-
-## 已建立环境后的最短路径
-
-这些命令假定已按新机手册创建用户配置并配置 MinerU token。扫描路径还要求
-Rapid 已通过本地 layered-PDF 验证。
-
-文字 PDF，不翻译：
+先运行配置向导。它会在用户目录创建
+`%USERPROFILE%\.ocr-flow\config.toml`；token 和 key 只应保存在这个用户配置中，
+绝不能提交到仓库。
 
 ~~~powershell
-uv run --locked --extra windows ocr-flow process <input.pdf> -o <output-dir> --config "$env:USERPROFILE\.ocr-flow\config.toml" --non-interactive --pdf-type text --lang en --no-translate --no-open-output -v
+uv run --locked --extra windows ocr-flow config
 ~~~
 
-扫描 PDF，Rapid CPU-only，不翻译：
+按你在上表选择的流程准备组件：
 
-~~~powershell
-uv run --locked --extra windows ocr-flow doctor --ocr --start-ocr
-uv run --locked --extra windows ocr-flow process <input.pdf> -o <output-dir> --config "$env:USERPROFILE\.ocr-flow\config.toml" --non-interactive --pdf-type scanned --lang en --no-translate --no-open-output -v
-~~~
+| 组件 | 何时必需 | 配置或首次准备 |
+| --- | --- | --- |
+| MinerU token | 所有 `process` | 在向导中填写。即使不翻译也会使用 MinerU。 |
+| Ghostscript | 所有 `--no-translate` 流程；翻译时仅 `--compress` | 安装或在向导中填写 `gswin64c.exe` 路径。 |
+| Umi-OCR Rapid v2.1.5 | 扫描件；CPU-only OCR | 在向导中选择 `rapid`，填写 `Umi-OCR.exe` 绝对路径。 |
+| BabelDOC cpu-safe | `--translate` | 执行下面的 `runtime setup`。 |
+| 翻译 provider key | `--translate` | 在向导中填写兼容 OpenAI API 的服务配置。 |
 
-翻译 PDF：
+翻译首次使用前，安装项目托管的 BabelDOC runtime：
 
 ~~~powershell
 uv run --locked --extra windows ocr-flow runtime setup --profile cpu-safe
-uv run --locked --extra windows ocr-flow process <input.pdf> -o <output-dir> --config "$env:USERPROFILE\.ocr-flow\config.toml" --non-interactive --pdf-type text --lang en --translate --no-open-output -v
 ~~~
 
-非交互模式必须同时给出 --lang 和 --translate 或 --no-translate。翻译路径还需要
-用户自己的兼容 OpenAI provider key；任何 process 都会调用 MinerU，因此即使
-不翻译也需要 MinerU token 和额度。
+CPU-only 机器只使用 `cpu-safe`。不要执行 `windows-directml` 或
+`--all-profiles`。扫描件必须使用 Rapid 包，而不是用 Paddle 安装包代替；完整的
+Rapid 下载、文件验证和本地 layered-PDF 验证见
+[新机安装手册](docs/fresh-clone-setup.md)。
 
-## CPU-only Rapid 约定
+## 3. 在付费处理前预检
 
-Umi-OCR 有 Paddle 和 Rapid 两个明确引擎。旧配置不含 engine 时保持 Paddle；
-CPU-only 新机应选择 Rapid v2.1.5：
+先检查已配置的常规依赖：
 
-~~~toml
-[umiocr]
-engine = "rapid"
-language = "English"
-exe_path = "C:/Tools/Umi-OCR_Rapid_v2.1.5/Umi-OCR.exe"
+~~~powershell
+uv run --locked --extra windows ocr-flow doctor
 ~~~
 
---lang en 和 --lang zh 会分别映射为 Rapid 的 English 和 简体中文。OCR Flow
-会在上传前读取 Umi-OCR 的 document options；如果端口上运行的是 Paddle 而配置
-要求 Rapid，它会明确失败，而不是把 Paddle 路径当成 Rapid 支持。
+处理扫描件时，启动并检查本地 Umi-OCR：
 
-CPU-only 只使用 BabelDOC 的 cpu-safe profile。不要使用 windows-directml 或
---all-profiles；后者会运行 DirectML 并让 API 消耗翻倍。
+~~~powershell
+uv run --locked --extra windows ocr-flow doctor --ocr --start-ocr
+~~~
 
-## 外部依赖边界
-
-- Python 包由 uv.lock 锁定；Windows extra 锁定 pythonnet 3.0.5。
-- Ghostscript、Umi-OCR Rapid、BabelDOC runtime、MinerU 和翻译服务各自有不同
-  的获取与验证路径，完整表见新机手册。
-- pythonnet 只支持 Windows .NET WebClient 的 MinerU ZIP 回退；它不是 OCR
-  引擎。curl.exe 和 PowerShell 也是机会性回退，不是额外安装前置。
-- MinerU 结果 ZIP 下载与 Markdown 图片本地化是两条路径：前者的 requests、
-  curl、.NET、PowerShell 标准回退保留系统 CA 和系统/环境代理策略；若 CDN DNS
-  被本机网络截获，最后可对限定的 OpenXLab CDN 使用公共 DNS `curl --resolve`
-  直连，仍按原主机名验证证书且只允许 HTTPS。后者先复制 ZIP 中本地图片，只在
-  Markdown 有远程 HTTP 图片时使用 requests。任何
-  `verify=False`、`curl -k` 或 TrustAll 结果都不算受支持证据。
-
-## 输出、检查和恢复
-
-付费处理前先运行统一部署预检：
+需要确认整台机器是否具备完整部署条件时，运行统一预检：
 
 ~~~powershell
 uv run --locked --extra windows ocr-flow doctor --deployment
 uv run --locked --extra windows ocr-flow doctor --deployment --json output\deployment-report.json
 ~~~
 
-它不启动或安装 runtime、不调用付费 API；结果为 `PASS`、`WARN`、`FAIL` 或
-`UNVERIFIED`，并给出 `READY`、`NOT_READY` 或 `UNVERIFIED` verdict。JSON 只含
-分类路径和 presence-only 凭据状态，不含 token、key、签名 URL 或原始用户目录。
-“受支持机器”要求标准 Windows 用户跑通所有正常工作流和完整四案例矩阵，不是
-只通过 CPU/Rapid 本地 smoke。portable Ghostscript 的 no-admin 配置和残余风险见
-[新机安装手册](docs/fresh-clone-setup.md#统一部署预检)。
+部署预检不启动或安装 runtime，也不调用 MinerU 或翻译 API。`READY` 表示已通过
+本机可观察的检查；`NOT_READY` 先修复失败项；`UNVERIFIED` 表示仍有环境证据未在
+本机验证。它不是一次转换的替代品。
 
-一个 Conversion Run 的输出位于：
+## 4. 已建立环境后的最短路径
+
+以下命令使用用户配置文件。将输入 PDF 和输出目录换成自己的路径；保持
+`--non-interactive` 时，不要省略 PDF 类型、语言或翻译选择。
+
+~~~powershell
+$credentialConfig = "$env:USERPROFILE\.ocr-flow\config.toml"
+~~~
+
+### 文字 PDF，不翻译
+
+~~~powershell
+uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>" --config $credentialConfig --non-interactive --pdf-type text --lang en --no-translate --no-open-output -v
+~~~
+
+这个流程会压缩拆分后的 PDF，因此 Ghostscript 是必需项。
+
+### 扫描 PDF，不翻译
+
+先完成步骤 3 的 Rapid 检查，然后执行：
+
+~~~powershell
+uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>" --config $credentialConfig --non-interactive --pdf-type scanned --lang en --no-translate --no-open-output -v
+~~~
+
+`--lang en` 可以替换成 `--lang zh`。OCR Flow 会将它映射为配置的 OCR 引擎所需
+的语言值，并在上传前拒绝配置为 Rapid、实际却运行 Paddle 的服务。
+
+### 翻译 PDF
+
+确认步骤 2 已完成 cpu-safe runtime 和翻译 key 配置后执行：
+
+~~~powershell
+uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>" --config $credentialConfig --non-interactive --pdf-type text --lang en --translate --no-open-output -v
+~~~
+
+把 `--pdf-type text` 改为 `--pdf-type scanned` 可翻译扫描件。翻译默认不调用
+Ghostscript，以保留 BabelDOC 的字体和中文编码；只有明确加入 `--compress` 时才会
+压缩翻译片段，并因此需要 Ghostscript：
+
+~~~powershell
+uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>" --config $credentialConfig --non-interactive --pdf-type scanned --lang en --translate --compress --no-open-output -v
+~~~
+
+## 5. 检查结果
+
+一次 Conversion Run 会在输出根目录创建带时间戳的目录：
 
 ~~~text
 <output-root>/<timestamp>/<source-stem>/
@@ -111,40 +153,51 @@ uv run --locked --extra windows ocr-flow doctor --deployment --json output\deplo
   ocr-flow.log
   intermediate/
   final/
-    part_001.md ...
+    part_001.md
     images/
-    compressed_pdfs/
+    compressed_pdfs/  # 仅翻译且使用 --compress
   titles_guide.md
 ~~~
 
-扫描流程的 layered PDF 位于 intermediate；翻译的 dual PDF 也保留在
-intermediate。使用 --compress 时，压缩翻译片段位于 final/compressed_pdfs。
-先用 PDF 阅读器做人眼检查，再使用 final Markdown。
+先在 PDF 阅读器中检查 `intermediate/` 中保留的 layered PDF 或双语 PDF，再检查
+`final/` 的 Markdown、图片链接和页面顺序。不要只看命令退出码：公式、OCR
+文字、中文字符和版面需要人工确认。
 
-Ghostscript 规则：不翻译的流程总会压缩，因此必须安装；翻译流程默认不调用
-Ghostscript，只有显式加入 `--compress` 才需要它。文字/扫描 PDF 遵循同一规则。
-完整决策表和兼容性 smoke 见 [新机安装手册](docs/fresh-clone-setup.md#ghostscript-到底什么时候使用)。
+## 6. 从中断处恢复
 
-发生中断时不要重新提交已成功的 MinerU 片段：
+保留同一个输出目录中的 `.state.json`，避免重新提交已成功的 MinerU 分段。将原有
+转换命令加上 `--recovery retry`：
 
 ~~~powershell
-uv run --locked --extra windows ocr-flow process <input.pdf> -o <output-dir> --config "$env:USERPROFILE\.ocr-flow\config.toml" --non-interactive --pdf-type <text-or-scanned> --lang en --no-translate --recovery retry --no-open-output -v
+uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>" --config $credentialConfig --non-interactive --pdf-type <text-or-scanned> --lang en --no-translate --recovery retry --no-open-output -v
 ~~~
 
-## 复杂 PDF 验证
+恢复策略 `continue`、`retry`、`continue_retry` 和 `restart` 的行为，以及状态文件
+和中间产物的边界见 [运行时与输出契约](docs/runtime-pipeline.md)。
 
-仓库跟踪六页 source/scan fixture、manifest、生成器、runner 和离线 validator。
-先执行不耗额度检查：
+## 7. 验证完整工具链
+
+日常转换走步骤 1 到 6。若要声明一台新机器或一次发布支持完整工作流，还必须运行
+真实的六页复杂 PDF 矩阵：文字/扫描件各一条不翻译和翻译路径，共四个 case。它会
+消耗 24 个 MinerU 转换和两次翻译请求，必须先获得账户额度和费用批准。
+
+离线检查不消耗额度：
 
 ~~~powershell
-uv run --locked --extra windows python scripts/generate_complex_pdf_scan.py --verify
 uv run --locked --extra windows --extra dev pytest tests/test_complex_pdf_assets.py tests/test_live_matrix_validation.py -q
+uv run --locked --extra windows python scripts/generate_complex_pdf_scan.py --verify
 ~~~
 
-真实 CPU/Rapid 矩阵包含四个 case：text_no_translate、scan_no_translate、
-text_translate_uncompressed、scan_translate_compressed。一个 cpu-safe profile
-消耗 24 个 MinerU 转换和两个翻译请求，必须先获得账户额度和费用的明确批准。
-通过 exit code 后仍要查看保留的 PDF、Markdown、状态文件、报告和 contact sheets。
+真实矩阵的准备、命令、保留证据和人工验收在
+[复杂 PDF 真实服务矩阵](docs/complex-pdf-live-matrix.md)。通过 exit code 后仍必须
+查看状态文件、Markdown、PDF、报告和 contact sheets。
 
-完整命令、可观测输出和人工验收要求在
-[complex-pdf-live-matrix.md](docs/complex-pdf-live-matrix.md)。
+## 深入资料
+
+| 需要了解什么 | 文档 |
+| --- | --- |
+| Windows 安装、版本、组件获取与 CPU-only Rapid 验证 | [fresh-clone-setup.md](docs/fresh-clone-setup.md) |
+| 管线阶段、输出、配置与恢复规则 | [runtime-pipeline.md](docs/runtime-pipeline.md) |
+| BabelDOC runtime 与 DirectML profile | [babeldoc-runtime-profiles.md](docs/babeldoc-runtime-profiles.md) |
+| 六页复杂 PDF 的真实服务矩阵 | [complex-pdf-live-matrix.md](docs/complex-pdf-live-matrix.md) |
+| 维护仓库、测试和外部服务边界 | [ai-maintenance-guide.md](docs/ai-maintenance-guide.md) |
