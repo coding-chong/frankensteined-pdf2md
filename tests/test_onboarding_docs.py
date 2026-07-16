@@ -41,6 +41,26 @@ def test_readme_distinguishes_umiocr_engines_and_names_upstreams():
     assert "扫描件必须使用 Rapid" not in readme
 
 
+def test_readme_translation_row_names_actual_dependencies():
+    readme = _read("README.md")
+    translation_row = next(
+        line
+        for line in readme.splitlines()
+        if "需要翻译并保留双语 PDF" in line
+    )
+
+    for expected in (
+        "opendatalab/MinerU",
+        "funstory-ai/BabelDOC",
+        "v0.6.3",
+        "DashScope",
+        "qwen3.5-flash",
+    ):
+        assert expected in translation_row
+    assert "BabelDOC cpu-safe runtime" not in translation_row
+    assert "翻译 key" not in translation_row
+
+
 def test_product_docs_distinguish_repository_package_and_cli_names():
     expected_titles = {
         "README.md": "# coding-chong/frankensteined-pdf2md",

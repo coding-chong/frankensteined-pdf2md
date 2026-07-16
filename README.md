@@ -16,7 +16,7 @@ token 和账户额度；使用 `--translate` 还需要兼容 OpenAI API 的翻�
 | --- | --- | --- |
 | 带可选中文字的文字 PDF，不翻译 | MinerU、Ghostscript | 从步骤 1 顺序完成到步骤 4 |
 | 扫描件或图片 PDF，不翻译 | MinerU、Ghostscript、[hiroi-sora/Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) 的已选引擎 | 从步骤 1 顺序完成到步骤 4 |
-| 需要翻译并保留双语 PDF | MinerU、BabelDOC cpu-safe runtime、翻译 key | 从步骤 1 顺序完成到步骤 4 |
+| 需要翻译并保留双语 PDF | [opendatalab/MinerU](https://github.com/opendatalab/MinerU)、[funstory-ai/BabelDOC](https://github.com/funstory-ai/BabelDOC) v0.6.3、DashScope `qwen3.5-flash` API key | 从步骤 1 顺序完成到步骤 4 |
 
 扫描件是否需要 OCR，不以文件名判断：无法在 PDF 阅读器中选中正文文字时，按
 扫描件处理。`--lang en` 和 `--lang zh` 是源文档语言；非交互命令必须同时指定
