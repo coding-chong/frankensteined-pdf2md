@@ -40,6 +40,10 @@ def test_readme_leads_new_clones_to_the_authoritative_setup_guide():
         assert prompt in readme
     assert "普通用户直接按 Enter。不要 clone BabelDOC，也不要填写路径。" in readme
     assert ".ocr-flow-runtime/BabelDOC" in readme
+    assert "`ocr-flow config` 没有 `--non-interactive` 参数" in readme
+    assert "config.example.toml" in readme
+    assert "Copy-Item .\\config.example.toml $credentialConfig" in readme
+    assert "`ocr-flow doctor` 只读取它，不能接受\n`--config`" in readme
 
 
 def test_readme_distinguishes_umiocr_engines_and_names_upstreams():

@@ -1,0 +1,45 @@
+# Copy this file to %USERPROFILE%/.ocr-flow/config.toml, or have an automation
+# system render the same fields into a credential file passed with --config.
+# Do not commit a copy containing real tokens or API keys.
+
+[general]
+output_dir = "./output"
+verbose = false
+
+[mineru]
+# Required for every process run.
+api_token = ""
+
+[umiocr]
+enabled = true
+url = "http://127.0.0.1:1224"
+# GPU/default engine: paddle with Paddle model-path language values.
+# CPU-only engine: rapid with language = "English" or "简体中文".
+engine = "paddle"
+language = "models/config_en.txt"
+# Leave empty for auto-discovery, or set an absolute Umi-OCR.exe path.
+exe_path = ""
+
+[babeldoc]
+# Leave empty to use the project-managed runtime created by `ocr-flow runtime setup`.
+# An external checkout must first be normalized by `ocr-flow runtime setup --path`.
+path = ""
+lang_in = "en-US"
+lang_out = "zh-CN"
+openai = true
+openai_model = "deepseek-chat"
+openai_base_url = "https://api.deepseek.com"
+# Required only for --translate.
+openai_api_key = ""
+qps = 2
+# Empty means BabelDOC automatic font-family selection.
+primary_font_family = ""
+
+[compress]
+# Leave empty for PATH/common-location discovery, or set gswin64c.exe.
+ghostscript_path = ""
+quality = "ebook"
+
+[postprocess]
+fix_format = true
+download_images = true

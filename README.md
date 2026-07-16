@@ -85,6 +85,29 @@ uv run --locked --extra windows ocr-flow config
 此表与向导的实际提问顺序一致。配置完成后再决定是否安装翻译 runtime、验证扫描 OCR
 或直接处理 PDF。
 
+### 自动化或无交互配置
+
+`ocr-flow config` 没有 `--non-interactive` 参数。脚本、CI 或部署工具应直接生成
+TOML 配置文件，而不是伪造向导输入。仓库提供了不含凭据的
+[`config.example.toml`](config.example.toml)：
+
+~~~powershell
+$credentialDir = "$env:USERPROFILE\.ocr-flow"
+$credentialConfig = "$credentialDir\config.toml"
+New-Item -ItemType Directory -Force $credentialDir
+Copy-Item .\config.example.toml $credentialConfig
+~~~
+
+让你的密钥管理或部署工具把 MinerU token 写入 `[mineru].api_token`；翻译时再写入
+`[babeldoc].openai_api_key`。保留 `openai_model = "deepseek-chat"`、
+`openai_base_url = "https://api.deepseek.com"` 和 `babeldoc.path = ""`，除非你的
+自动化明确要使用其他兼容 provider 或已经通过 `runtime setup --path` 准备好的外部
+BabelDOC checkout。模板注释列出了 Paddle 与 Rapid 必须配对的 language 值。
+
+正常情况下，把文件写到上述默认路径；`ocr-flow doctor` 只读取它，不能接受
+`--config`。批处理若使用另一份生成的配置文件，可在第 5 节的命令中传入
+`--config $credentialConfig`。
+
 翻译首次使用前，安装项目托管的 BabelDOC runtime：
 
 ~~~powershell

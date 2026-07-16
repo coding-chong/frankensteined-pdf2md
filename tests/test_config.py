@@ -519,6 +519,20 @@ class TestInteractiveConfig:
         assert config.babeldoc.path == "C:/work/BabelDOC"
 
 
+def test_example_config_is_parseable_and_uses_safe_defaults():
+    example = Path(__file__).resolve().parents[1] / "config.example.toml"
+
+    config = Config.load(example)
+
+    assert config.mineru.api_token == ""
+    assert config.babeldoc.openai_model == "deepseek-chat"
+    assert config.babeldoc.openai_base_url == "https://api.deepseek.com"
+    assert config.babeldoc.openai_api_key == ""
+    assert config.babeldoc.path is None
+    assert config.umiocr.engine == "paddle"
+    assert config.umiocr.language == "models/config_en.txt"
+
+
 # =============================================================================
 # TestConfigEnvironment - Environment-Specific Tests
 # =============================================================================
