@@ -21,6 +21,26 @@ def test_readme_leads_new_clones_to_the_authoritative_setup_guide():
     assert "uv run --locked --extra windows ocr-flow process" in readme
 
 
+def test_readme_distinguishes_umiocr_engines_and_names_upstreams():
+    readme = _read("README.md")
+
+    for expected in (
+        "git-for-windows/git",
+        "astral-sh/uv",
+        "python/cpython",
+        "hiroi-sora/Umi-OCR",
+        "ArtifexSoftware/ghostpdl",
+        "funstory-ai/BabelDOC",
+        "opendatalab/MinerU",
+        "Umi-OCR_Paddle_v2.1.5.7z.exe",
+        "Umi-OCR_Rapid_v2.1.5.7z.exe",
+        "--engine paddle",
+        "--engine rapid",
+    ):
+        assert expected in readme
+    assert "扫描件必须使用 Rapid" not in readme
+
+
 def test_fresh_clone_guide_indexes_cpu_rapid_and_complex_matrix_contracts():
     guide = _read("docs/fresh-clone-setup.md")
 

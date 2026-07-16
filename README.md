@@ -15,7 +15,7 @@ token 和账户额度；使用 `--translate` 还需要兼容 OpenAI API 的翻�
 | 你的 PDF 或目标 | 需要的组件 | 从哪里开始 |
 | --- | --- | --- |
 | 带可选中文字的文字 PDF，不翻译 | MinerU、Ghostscript | 从步骤 1 顺序完成到步骤 4 |
-| 扫描件或图片 PDF，不翻译 | MinerU、Ghostscript、Umi-OCR Rapid | 从步骤 1 顺序完成到步骤 4 |
+| 扫描件或图片 PDF，不翻译 | MinerU、Ghostscript、[hiroi-sora/Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) 的已选引擎 | 从步骤 1 顺序完成到步骤 4 |
 | 需要翻译并保留双语 PDF | MinerU、BabelDOC cpu-safe runtime、翻译 key | 从步骤 1 顺序完成到步骤 4 |
 
 扫描件是否需要 OCR，不以文件名判断：无法在 PDF 阅读器中选中正文文字时，按
@@ -40,10 +40,26 @@ uv run --locked --extra windows ocr-flow --help
 `ocr_flow` 子目录安装，也不要全局安装 `ocr-flow` 或手动创建项目虚拟环境；这些
 方式会绕开仓库锁定的依赖。
 
-新 Windows 机器的完整安装顺序、外部程序下载位置、版本边界和本地验证在
+CPU-only 机器的完整安装顺序、Rapid 下载、版本边界和本地验证在
 [Windows 新机：从 Clone 到 CPU-only Rapid 验证](docs/fresh-clone-setup.md)。
 
 ## 2. 安装外部组件并配置账户
+
+下表的仓库名是外部组件的权威来源；OCR Flow 只配置和验证它们，不分发或维护其
+二进制文件。
+
+| 组件 | 上游来源 | 在本流程中的作用 |
+| --- | --- | --- |
+| Git for Windows | [git-for-windows/git](https://github.com/git-for-windows/git) | clone 和版本控制。 |
+| uv | [astral-sh/uv](https://github.com/astral-sh/uv) | 安装锁定的 Python 与项目依赖。 |
+| CPython | [python/cpython](https://github.com/python/cpython) | 由 uv 管理；本项目固定 3.13.12。 |
+| Umi-OCR | [hiroi-sora/Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) 的 [v2.1.5 Release](https://github.com/hiroi-sora/Umi-OCR/releases/tag/v2.1.5) | 扫描 PDF 的本地 OCR。GPU 选择 `Umi-OCR_Paddle_v2.1.5.7z.exe`；CPU-only 选择 `Umi-OCR_Rapid_v2.1.5.7z.exe`。 |
+| Ghostscript | [ArtifexSoftware/ghostpdl](https://github.com/ArtifexSoftware/ghostpdl)；[官方 Windows 下载页](https://ghostscript.com/releases/gsdnld.html) | 所有不翻译流程，以及带 `--compress` 的翻译流程。 |
+| BabelDOC | [funstory-ai/BabelDOC](https://github.com/funstory-ai/BabelDOC) | 翻译时由 OCR Flow 管理固定的 v0.6.3 / `28f784ca6b437dbba040bfd9c67110373cd0924b` runtime。 |
+| MinerU | [opendatalab/MinerU](https://github.com/opendatalab/MinerU)；[官方平台](https://mineru.net/) | 每次 `process` 的 Markdown 结构化转换与 token 来源。 |
+
+翻译 provider 不是本项目指定或分发的依赖。用户自行配置兼容 OpenAI API 的服务和
+key；不要把 key 写进仓库或命令示例。
 
 先运行配置向导。它会在用户目录创建
 `%USERPROFILE%\.ocr-flow\config.toml`；token 和 key 只应保存在这个用户配置中，
@@ -53,13 +69,14 @@ uv run --locked --extra windows ocr-flow --help
 uv run --locked --extra windows ocr-flow config
 ~~~
 
-按你在上表选择的流程准备组件：
+按你的硬件和处理目标完成配置：
 
 | 组件 | 何时必需 | 配置或首次准备 |
 | --- | --- | --- |
 | MinerU token | 所有 `process` | 在向导中填写。即使不翻译也会使用 MinerU。 |
 | Ghostscript | 所有 `--no-translate` 流程；翻译时仅 `--compress` | 安装或在向导中填写 `gswin64c.exe` 路径。 |
-| Umi-OCR Rapid v2.1.5 | 扫描件；CPU-only OCR | 在向导中选择 `rapid`，填写 `Umi-OCR.exe` 绝对路径。 |
+| Umi-OCR Paddle | 有 GPU 的扫描 OCR；默认引擎 | 在向导中确认 `engine = "paddle"`，填写所选 `Umi-OCR.exe` 路径。 |
+| Umi-OCR Rapid | CPU-only 扫描 OCR | 在向导中选择 `engine = "rapid"`，填写所选 `Umi-OCR.exe` 路径。 |
 | BabelDOC cpu-safe | `--translate` | 执行下面的 `runtime setup`。 |
 | 翻译 provider key | `--translate` | 在向导中填写兼容 OpenAI API 的服务配置。 |
 
@@ -69,10 +86,8 @@ uv run --locked --extra windows ocr-flow config
 uv run --locked --extra windows ocr-flow runtime setup --profile cpu-safe
 ~~~
 
-CPU-only 机器只使用 `cpu-safe`。不要执行 `windows-directml` 或
-`--all-profiles`。扫描件必须使用 Rapid 包，而不是用 Paddle 安装包代替；完整的
-Rapid 下载、文件验证和本地 layered-PDF 验证见
-[新机安装手册](docs/fresh-clone-setup.md)。
+`cpu-safe` 是 CPU-only 翻译 profile。`windows-directml` 是独立的、显式选择的
+BabelDOC 翻译 profile，不能从 Umi-OCR 的 Paddle/Rapid 选择推断出来。
 
 ## 3. 在付费处理前预检
 
@@ -82,7 +97,33 @@ Rapid 下载、文件验证和本地 layered-PDF 验证见
 uv run --locked --extra windows ocr-flow doctor
 ~~~
 
-处理扫描件时，启动并检查本地 Umi-OCR：
+处理扫描件时，先按硬件验证选定的 Umi-OCR 引擎。两条路径都需要 manifest 校验和
+可打开、页数匹配、可提取文字的 layered PDF；不能用一个引擎的成功替代另一个。
+
+### 有 GPU：Paddle
+
+从 [hiroi-sora/Umi-OCR v2.1.5 Release](https://github.com/hiroi-sora/Umi-OCR/releases/tag/v2.1.5)
+取得 `Umi-OCR_Paddle_v2.1.5.7z.exe`，在配置向导中保持或选择
+`engine = "paddle"`，然后验证：
+
+~~~powershell
+$umiRoot = "C:\Tools\Umi-OCR_Paddle_v2.1.5"
+uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path $umiRoot --engine paddle
+uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --input test_assets\test_page_scanned.pdf --output output\paddle-local-smoke\test_page_scanned.layered.pdf --umiocr "$umiRoot\Umi-OCR.exe" --engine paddle --lang en
+~~~
+
+### CPU-only：Rapid
+
+从同一 [hiroi-sora/Umi-OCR v2.1.5 Release](https://github.com/hiroi-sora/Umi-OCR/releases/tag/v2.1.5)
+取得 `Umi-OCR_Rapid_v2.1.5.7z.exe`，在配置向导中选择 `engine = "rapid"`，然后验证：
+
+~~~powershell
+$umiRoot = "C:\Tools\Umi-OCR_Rapid_v2.1.5"
+uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path $umiRoot --engine rapid
+uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --input test_assets\test_page_scanned.pdf --output output\rapid-local-smoke\test_page_scanned.layered.pdf --umiocr "$umiRoot\Umi-OCR.exe" --engine rapid --lang en
+~~~
+
+通过已选引擎验证后，启动并检查本地 Umi-OCR：
 
 ~~~powershell
 uv run --locked --extra windows ocr-flow doctor --ocr --start-ocr
@@ -118,7 +159,7 @@ uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>"
 
 ### 扫描 PDF，不翻译
 
-先完成步骤 3 的 Rapid 检查，然后执行：
+先完成步骤 3 中与硬件相符的 Paddle 或 Rapid 检查，然后执行：
 
 ~~~powershell
 uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>" --config $credentialConfig --non-interactive --pdf-type scanned --lang en --no-translate --no-open-output -v
@@ -177,9 +218,10 @@ uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>"
 
 ## 7. 验证完整工具链
 
-日常转换走步骤 1 到 6。若要声明一台新机器或一次发布支持完整工作流，还必须运行
-真实的六页复杂 PDF 矩阵：文字/扫描件各一条不翻译和翻译路径，共四个 case。它会
-消耗 24 个 MinerU 转换和两次翻译请求，必须先获得账户额度和费用批准。
+日常转换走步骤 1 到 6。若要声明 CPU-only 机器或一次发布支持完整 CPU/Rapid
+工作流，还必须运行真实的六页复杂 PDF 矩阵：文字/扫描件各一条不翻译和翻译路径，
+共四个 case。它会消耗 24 个 MinerU 转换和两次翻译请求，必须先获得账户额度和
+费用批准。
 
 离线检查不消耗额度：
 
