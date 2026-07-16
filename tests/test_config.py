@@ -491,6 +491,7 @@ class TestInteractiveConfig:
             [
                 config.mineru.api_token,
                 config.babeldoc.openai_api_key,
+                "custom-model",
                 config.babeldoc.openai_base_url,
                 config.babeldoc.path,
                 "auto",
@@ -514,6 +515,7 @@ class TestInteractiveConfig:
         Config.configure_interactive()
 
         assert saved == [config]
+        assert config.babeldoc.openai_model == "custom-model"
         assert config.babeldoc.path == "C:/work/BabelDOC"
 
 

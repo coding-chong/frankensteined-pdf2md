@@ -15,11 +15,18 @@ def test_readme_leads_new_clones_to_the_authoritative_setup_guide():
 
     assert "docs/fresh-clone-setup.md" in readme
     assert readme.index("docs/fresh-clone-setup.md") < readme.index(
-        "已建立环境后的最短路径"
+        "日常交互处理（推荐）"
     )
     assert "PySocks" not in readme
     assert "uv run --locked --extra windows ocr-flow process" in readme
     assert "完整转换的顺序" in readme
+    assert "日常交互处理（推荐）" in readme
+    assert readme.index("日常交互处理（推荐）") < readme.index(
+        "自动化和批处理（可选）"
+    )
+    assert 'ocr-flow process "<input.pdf>" -o "<output-dir>" -v' in readme
+    assert "BabelDOC Git checkout` 提示处也按 Enter" in readme
+    assert ".ocr-flow-runtime/BabelDOC" in readme
 
 
 def test_readme_distinguishes_umiocr_engines_and_names_upstreams():

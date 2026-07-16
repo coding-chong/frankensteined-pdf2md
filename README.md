@@ -78,17 +78,30 @@ uv run --locked --extra windows ocr-flow config
 | Ghostscript | 所有 `--no-translate` 流程；翻译时仅 `--compress` | 安装或在向导中填写 `gswin64c.exe` 路径。 |
 | Umi-OCR Paddle | 有 GPU 的扫描 OCR；默认引擎 | 在向导中确认 `engine = "paddle"`，填写所选 `Umi-OCR.exe` 路径。 |
 | Umi-OCR Rapid | CPU-only 扫描 OCR | 在向导中选择 `engine = "rapid"`，填写所选 `Umi-OCR.exe` 路径。 |
-| BabelDOC cpu-safe | `--translate` | 执行下面的 `runtime setup`。 |
-| 翻译 provider key | `--translate` | 在向导中填写兼容 OpenAI API 的服务配置。 |
+| BabelDOC cpu-safe | `--translate` | 保持 BabelDOC checkout 为空，执行下面的 `runtime setup`。 |
+| 翻译 provider key | `--translate` | 在向导中填写 key、模型和兼容 OpenAI API 的 endpoint。 |
+
+向导会依次询问 MinerU token、翻译 API key、模型、endpoint、BabelDOC checkout、
+字体、Ghostscript 和 Umi-OCR。普通用户使用 DeepSeek 时，在模型和 endpoint 提示处
+直接按 Enter，分别保留 `deepseek-chat` 和 `https://api.deepseek.com`；在
+`BabelDOC Git checkout` 提示处也按 Enter。留空表示使用本仓库托管的 BabelDOC，
+不需要 clone、下载或配置 BabelDOC 路径。
 
 翻译首次使用前，安装项目托管的 BabelDOC runtime：
 
 ~~~powershell
-uv run --locked --extra windows ocr-flow runtime setup --profile cpu-safe
+uv run --locked --extra windows ocr-flow runtime setup
+uv run --locked --extra windows ocr-flow runtime status
 ~~~
 
-`cpu-safe` 是 CPU-only 翻译 profile。`windows-directml` 是独立的、显式选择的
-BabelDOC 翻译 profile，不能从 Umi-OCR 的 Paddle/Rapid 选择推断出来。
+不带 `--path` 的 `runtime setup` 会在 checkout 下创建并安装
+`.ocr-flow-runtime/BabelDOC`。`cpu-safe` 是默认 CPU-only 翻译 profile。只有已拥有
+BabelDOC Git checkout 的高级用户才填写路径，并在理解该 checkout 会被清理和固定到
+测试版本后运行 `ocr-flow runtime setup --path <checkout>`；它不能替代普通用户的
+托管 runtime。
+
+`windows-directml` 是独立的、显式选择的 BabelDOC 翻译 profile，不能从 Umi-OCR 的
+Paddle/Rapid 选择推断出来。
 
 ## 3. 在付费处理前预检
 
@@ -141,10 +154,26 @@ uv run --locked --extra windows ocr-flow doctor --deployment --json output\deplo
 本机可观察的检查；`NOT_READY` 先修复失败项；`UNVERIFIED` 表示仍有环境证据未在
 本机验证。它不是一次转换的替代品。
 
-## 4. 已建立环境后的最短路径
+## 4. 日常交互处理（推荐）
 
-以下命令使用用户配置文件。将输入 PDF 和输出目录换成自己的路径；保持
-`--non-interactive` 时，不要省略 PDF 类型、语言或翻译选择。
+完成步骤 1 到 3 后，日常处理只需要给出输入和输出路径：
+
+~~~powershell
+uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>" -v
+~~~
+
+第一次运行而没有配置文件时，命令会先启动配置向导；以后会依次询问 PDF 类型、源文档
+语言和是否翻译。单个 PDF 的默认选择是自动检测、英文和翻译。扫描件先完成步骤 3 中
+与你硬件相符的 Paddle 或 Rapid 检查；选择翻译前先完成项目托管 BabelDOC runtime
+安装。选择不翻译时，Ghostscript 必须可用。
+
+处理完成后检查 PDF、Markdown 和图片，再按第 7 节用同一输出目录恢复中断任务。
+
+## 5. 自动化和批处理（可选）
+
+以下非交互命令适用于脚本、CI 或已明确知道每个输入类型的批量处理。它们不替代第 4
+节的日常交互路径。将输入 PDF 和输出目录换成自己的路径；使用
+`--non-interactive` 时，必须提供 PDF 类型、语言和翻译选择。
 
 ~~~powershell
 $credentialConfig = "$env:USERPROFILE\.ocr-flow\config.toml"
@@ -185,7 +214,7 @@ Ghostscript，以保留 BabelDOC 的字体和中文编码；只有明确加入 `
 uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>" --config $credentialConfig --non-interactive --pdf-type scanned --lang en --translate --compress --no-open-output -v
 ~~~
 
-## 5. 检查结果
+## 6. 检查结果
 
 一次 Conversion Run 会在输出根目录创建带时间戳的目录：
 
@@ -205,7 +234,7 @@ uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>"
 `final/` 的 Markdown、图片链接和页面顺序。不要只看命令退出码：公式、OCR
 文字、中文字符和版面需要人工确认。
 
-## 6. 从中断处恢复
+## 7. 从中断处恢复
 
 保留同一个输出目录中的 `.state.json`，避免重新提交已成功的 MinerU 分段。将原有
 转换命令加上 `--recovery retry`：
@@ -217,7 +246,7 @@ uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>"
 恢复策略 `continue`、`retry`、`continue_retry` 和 `restart` 的行为，以及状态文件
 和中间产物的边界见 [运行时与输出契约](docs/runtime-pipeline.md)。
 
-## 7. 验证完整工具链
+## 8. 验证完整工具链
 
 日常转换走步骤 1 到 6。若要声明 CPU-only 机器或一次发布支持完整 CPU/Rapid
 工作流，还必须运行真实的六页复杂 PDF 矩阵：文字/扫描件各一条不翻译和翻译路径，

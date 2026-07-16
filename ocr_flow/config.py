@@ -310,6 +310,11 @@ class Config:
         key = click.prompt("OpenAI API Key (for BabelDOC translation)", default=current, show_default=False)
         config.babeldoc.openai_api_key = key
 
+        # OpenAI-compatible model
+        click.echo(f"Current OpenAI model: {config.babeldoc.openai_model}")
+        model = click.prompt("OpenAI model", default=config.babeldoc.openai_model)
+        config.babeldoc.openai_model = model
+
         # OpenAI Base URL
         click.echo(f"Current OpenAI Base URL: {config.babeldoc.openai_base_url}")
         base_url = click.prompt("OpenAI Base URL", default=config.babeldoc.openai_base_url)
