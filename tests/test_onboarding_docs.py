@@ -14,18 +14,31 @@ def test_readme_leads_new_clones_to_the_authoritative_setup_guide():
     readme = _read("README.md")
 
     assert "docs/fresh-clone-setup.md" in readme
-    assert readme.index("docs/fresh-clone-setup.md") < readme.index(
-        "日常交互处理（推荐）"
-    )
+    assert readme.index("docs/fresh-clone-setup.md") < readme.index("日常处理")
     assert "PySocks" not in readme
     assert "uv run --locked --extra windows ocr-flow process" in readme
     assert "完整转换的顺序" in readme
-    assert "日常交互处理（推荐）" in readme
-    assert readme.index("日常交互处理（推荐）") < readme.index(
+    assert "使用 ocr-flow 交互式配置" in readme
+    assert readme.index("使用 ocr-flow 交互式配置") < readme.index(
+        "日常处理"
+    )
+    assert readme.index("日常处理") < readme.index(
         "自动化和批处理（可选）"
     )
     assert 'ocr-flow process "<input.pdf>" -o "<output-dir>" -v' in readme
-    assert "BabelDOC Git checkout` 提示处也按 Enter" in readme
+    for prompt in (
+        "MinerU API Token",
+        "OpenAI API Key (for BabelDOC translation)",
+        "OpenAI model",
+        "OpenAI Base URL",
+        "BabelDOC Git checkout (leave empty for managed runtime)",
+        "BabelDOC primary font family",
+        "Ghostscript path",
+        "UMI OCR engine",
+        "UMI OCR exe path",
+    ):
+        assert prompt in readme
+    assert "普通用户直接按 Enter。不要 clone BabelDOC，也不要填写路径。" in readme
     assert ".ocr-flow-runtime/BabelDOC" in readme
 
 

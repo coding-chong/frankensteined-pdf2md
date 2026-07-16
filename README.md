@@ -43,7 +43,7 @@ uv run --locked --extra windows ocr-flow --help
 CPU-only 机器的完整安装顺序、Rapid 下载、版本边界和本地验证在
 [Windows 新机：从 Clone 到 CPU-only Rapid 验证](docs/fresh-clone-setup.md)。
 
-## 2. 安装外部组件并配置账户
+## 2. 安装外部组件，然后使用 ocr-flow 交互式配置
 
 下表的仓库名是外部组件的权威来源；本仓库只配置和验证它们，不分发或维护其
 二进制文件。
@@ -60,32 +60,30 @@ CPU-only 机器的完整安装顺序、Rapid 下载、版本边界和本地验�
 
 翻译 provider 不是本项目指定或分发的依赖。DeepSeek `deepseek-chat` 是配置向导
 的默认示例，用户可以自行配置任何兼容 OpenAI API 的服务和 key；不要把 key 写进
-仓库或命令示例。
-
-先运行配置向导。它会在用户目录创建
-`%USERPROFILE%\.ocr-flow\config.toml`；token 和 key 只应保存在这个用户配置中，
-绝不能提交到仓库。
+仓库或命令示例。运行 `ocr-flow config` 是首次使用时唯一需要跟随的交互式配置流程。
+它会在用户目录创建 `%USERPROFILE%\.ocr-flow\config.toml`；token 和 key 只应保存在
+这个用户配置中，绝不能提交到仓库。
 
 ~~~powershell
 uv run --locked --extra windows ocr-flow config
 ~~~
 
-按你的硬件和处理目标完成配置：
+### 向导中的每一项怎么填
 
-| 组件 | 何时必需 | 配置或首次准备 |
-| --- | --- | --- |
-| MinerU token | 所有 `process` | 在向导中填写。即使不翻译也会使用 MinerU。 |
-| Ghostscript | 所有 `--no-translate` 流程；翻译时仅 `--compress` | 安装或在向导中填写 `gswin64c.exe` 路径。 |
-| Umi-OCR Paddle | 有 GPU 的扫描 OCR；默认引擎 | 在向导中确认 `engine = "paddle"`，填写所选 `Umi-OCR.exe` 路径。 |
-| Umi-OCR Rapid | CPU-only 扫描 OCR | 在向导中选择 `engine = "rapid"`，填写所选 `Umi-OCR.exe` 路径。 |
-| BabelDOC cpu-safe | `--translate` | 保持 BabelDOC checkout 为空，执行下面的 `runtime setup`。 |
-| 翻译 provider key | `--translate` | 在向导中填写 key、模型和兼容 OpenAI API 的 endpoint。 |
+| 向导提示 | 普通用户的动作 |
+| --- | --- |
+| `MinerU API Token` | 所有处理都需要。粘贴自己的 MinerU token。 |
+| `OpenAI API Key (for BabelDOC translation)` | 只在翻译时需要。使用 DeepSeek 时粘贴 DeepSeek key；暂不翻译可留空。 |
+| `OpenAI model` | 使用默认 DeepSeek 时直接按 Enter，保留 `deepseek-chat`；其他兼容服务时输入其模型名。 |
+| `OpenAI Base URL` | 使用默认 DeepSeek 时直接按 Enter，保留 `https://api.deepseek.com`；其他兼容服务时输入其 endpoint。 |
+| `BabelDOC Git checkout (leave empty for managed runtime)` | 普通用户直接按 Enter。不要 clone BabelDOC，也不要填写路径。 |
+| `BabelDOC primary font family` | 直接按 Enter 保持 `auto`，除非你明确需要 serif、sans-serif 或 script。 |
+| `Ghostscript path` | 已安装且在 PATH 中时直接按 Enter；否则填写真实的 `gswin64c.exe` 路径。 |
+| `UMI OCR engine` | 有 GPU 的扫描 OCR 选 `paddle`；CPU-only 扫描 OCR 选 `rapid`。 |
+| `UMI OCR exe path` | 已在 PATH/默认目录可发现时直接按 Enter；否则填写所选 `Umi-OCR.exe` 的绝对路径。 |
 
-向导会依次询问 MinerU token、翻译 API key、模型、endpoint、BabelDOC checkout、
-字体、Ghostscript 和 Umi-OCR。普通用户使用 DeepSeek 时，在模型和 endpoint 提示处
-直接按 Enter，分别保留 `deepseek-chat` 和 `https://api.deepseek.com`；在
-`BabelDOC Git checkout` 提示处也按 Enter。留空表示使用本仓库托管的 BabelDOC，
-不需要 clone、下载或配置 BabelDOC 路径。
+此表与向导的实际提问顺序一致。配置完成后再决定是否安装翻译 runtime、验证扫描 OCR
+或直接处理 PDF。
 
 翻译首次使用前，安装项目托管的 BabelDOC runtime：
 
@@ -154,7 +152,7 @@ uv run --locked --extra windows ocr-flow doctor --deployment --json output\deplo
 本机可观察的检查；`NOT_READY` 先修复失败项；`UNVERIFIED` 表示仍有环境证据未在
 本机验证。它不是一次转换的替代品。
 
-## 4. 日常交互处理（推荐）
+## 4. 日常处理
 
 完成步骤 1 到 3 后，日常处理只需要给出输入和输出路径：
 
@@ -162,9 +160,9 @@ uv run --locked --extra windows ocr-flow doctor --deployment --json output\deplo
 uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>" -v
 ~~~
 
-第一次运行而没有配置文件时，命令会先启动配置向导；以后会依次询问 PDF 类型、源文档
-语言和是否翻译。单个 PDF 的默认选择是自动检测、英文和翻译。扫描件先完成步骤 3 中
-与你硬件相符的 Paddle 或 Rapid 检查；选择翻译前先完成项目托管 BabelDOC runtime
+没有配置文件时，这个命令会先启动第 2 节的配置向导；建议显式运行 `ocr-flow config`
+完成配置后再处理。处理时会询问 PDF 类型、源文档语言和是否翻译。扫描件先完成步骤 3
+中与你硬件相符的 Paddle 或 Rapid 检查；选择翻译前先完成项目托管 BabelDOC runtime
 安装。选择不翻译时，Ghostscript 必须可用。
 
 处理完成后检查 PDF、Markdown 和图片，再按第 7 节用同一输出目录恢复中断任务。
