@@ -1,6 +1,6 @@
-# BabelDOC Runtime Profiles
+# coding-chong/frankensteined-pdf2md: BabelDOC Runtime Profiles
 
-Frank OCR owns the default BabelDOC Runtime used by Translation Enrichment. A
+coding-chong/frankensteined-pdf2md owns the default BabelDOC Runtime used by Translation Enrichment. A
 normal user does not clone BabelDOC, configure an absolute path, or patch
 backend source. The supported runtime is BabelDOC `v0.6.3` at
 `28f784ca6b437dbba040bfd9c67110373cd0924b`, installed below the checkout at:
@@ -17,7 +17,7 @@ same manifest, lock, and DirectML patch as a source checkout.
 
 ## Normal Setup
 
-From a Frank OCR checkout after its Python environment is available:
+From a coding-chong/frankensteined-pdf2md checkout after its Python environment is available:
 
 ```powershell
 uv run --locked --extra windows ocr-flow runtime setup
@@ -47,7 +47,7 @@ command above.
 `ocr-flow runtime status` reports the runtime from the most recent successful
 setup marker and queries canonical upstream tags without changing any checkout.
 A newer upstream release is advisory only: it becomes the default only after
-Frank OCR pins its commit, regenerates the profile lock, reviews any patch,
+coding-chong/frankensteined-pdf2md pins its commit, regenerates the profile lock, reviews any patch,
 passes CPU and DirectML smoke tests, and passes a translated API smoke
 conversion.
 
@@ -115,7 +115,7 @@ Windows DirectML profile applies the revision-locked layout patch.
 
 ## Runtime Selection
 
-Frank OCR supports exactly one BabelDOC version: the tested `v0.6.3` profile.
+coding-chong/frankensteined-pdf2md supports exactly one BabelDOC version: the tested `v0.6.3` profile.
 `babeldoc.path` is not a version override. It only selects an external Git
 checkout that `runtime setup --path` has already forced to that version and
 verified. The configuration wizard preserves this explicit path and reminds

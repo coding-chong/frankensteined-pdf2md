@@ -1,4 +1,4 @@
-# Windows 新机：从 Clone 到 CPU-only Rapid 验证
+# coding-chong/frankensteined-pdf2md: Windows 新机：从 Clone 到 CPU-only Rapid 验证
 
 本页是 Windows x64 新机器的唯一按序安装手册。先完成本页，再看
 [运行时与输出契约](runtime-pipeline.md)、[BabelDOC profile](babeldoc-runtime-profiles.md)

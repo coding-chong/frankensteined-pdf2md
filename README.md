@@ -1,6 +1,6 @@
-# OCR Flow
+# coding-chong/frankensteined-pdf2md: PDF to Markdown Converter
 
-OCR Flow 将技术 PDF 转为可恢复、可审计的 Markdown，面向芯片手册、数据
+coding-chong/frankensteined-pdf2md 将技术 PDF 转为可恢复、可审计的 Markdown，面向芯片手册、数据
 手册和同类技术文档。它可以处理带文字层的 PDF，也可以先为扫描件生成 OCR
 文字层；可选地保留 BabelDOC 的双语 PDF，再通过 MinerU 生成带本地图片的
 Markdown。
@@ -45,7 +45,7 @@ CPU-only 机器的完整安装顺序、Rapid 下载、版本边界和本地验�
 
 ## 2. 安装外部组件并配置账户
 
-下表的仓库名是外部组件的权威来源；OCR Flow 只配置和验证它们，不分发或维护其
+下表的仓库名是外部组件的权威来源；本仓库只配置和验证它们，不分发或维护其
 二进制文件。
 
 | 组件 | 上游来源 | 在本流程中的作用 |
@@ -55,7 +55,7 @@ CPU-only 机器的完整安装顺序、Rapid 下载、版本边界和本地验�
 | CPython | [python/cpython](https://github.com/python/cpython) | 由 uv 管理；本项目固定 3.13.12。 |
 | Umi-OCR | [hiroi-sora/Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) 的 [v2.1.5 Release](https://github.com/hiroi-sora/Umi-OCR/releases/tag/v2.1.5) | 扫描 PDF 的本地 OCR。GPU 选择 `Umi-OCR_Paddle_v2.1.5.7z.exe`；CPU-only 选择 `Umi-OCR_Rapid_v2.1.5.7z.exe`。 |
 | Ghostscript | [ArtifexSoftware/ghostpdl](https://github.com/ArtifexSoftware/ghostpdl)；[官方 Windows 下载页](https://ghostscript.com/releases/gsdnld.html) | 所有不翻译流程，以及带 `--compress` 的翻译流程。 |
-| BabelDOC | [funstory-ai/BabelDOC](https://github.com/funstory-ai/BabelDOC) | 翻译时由 OCR Flow 管理固定的 v0.6.3 / `28f784ca6b437dbba040bfd9c67110373cd0924b` runtime。 |
+| BabelDOC | [funstory-ai/BabelDOC](https://github.com/funstory-ai/BabelDOC) | 翻译时由本仓库管理固定的 v0.6.3 / `28f784ca6b437dbba040bfd9c67110373cd0924b` runtime。 |
 | MinerU | [opendatalab/MinerU](https://github.com/opendatalab/MinerU)；[官方平台](https://mineru.net/) | 每次 `process` 的 Markdown 结构化转换与 token 来源。 |
 
 翻译 provider 不是本项目指定或分发的依赖。用户自行配置兼容 OpenAI API 的服务和
@@ -165,7 +165,7 @@ uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>"
 uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>" --config $credentialConfig --non-interactive --pdf-type scanned --lang en --no-translate --no-open-output -v
 ~~~
 
-`--lang en` 可以替换成 `--lang zh`。OCR Flow 会将它映射为配置的 OCR 引擎所需
+`--lang en` 可以替换成 `--lang zh`。本仓库会将它映射为配置的 OCR 引擎所需
 的语言值，并在上传前拒绝配置为 Rapid、实际却运行 Paddle 的服务。
 
 ### 翻译 PDF

@@ -1,7 +1,8 @@
-# AI Maintenance Guide
+# coding-chong/frankensteined-pdf2md: AI Maintenance Guide
 
 This is repository-owned maintenance documentation. It is intentionally
-separate from README.md, which is for people installing and using OCR Flow.
+separate from README.md, which is for people installing and using
+coding-chong/frankensteined-pdf2md.
 Do not create or track vendor-specific assistant instruction files as a
 substitute for this document.
 

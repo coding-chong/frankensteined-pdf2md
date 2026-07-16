@@ -41,6 +41,33 @@ def test_readme_distinguishes_umiocr_engines_and_names_upstreams():
     assert "扫描件必须使用 Rapid" not in readme
 
 
+def test_product_docs_distinguish_repository_package_and_cli_names():
+    expected_titles = {
+        "README.md": "# coding-chong/frankensteined-pdf2md",
+        "docs/ai-maintenance-guide.md": (
+            "# coding-chong/frankensteined-pdf2md: AI Maintenance Guide"
+        ),
+        "docs/babeldoc-runtime-profiles.md": (
+            "# coding-chong/frankensteined-pdf2md: BabelDOC Runtime Profiles"
+        ),
+        "docs/complex-pdf-live-matrix.md": (
+            "# coding-chong/frankensteined-pdf2md: Complex PDF Live Matrix"
+        ),
+        "docs/fresh-clone-setup.md": (
+            "# coding-chong/frankensteined-pdf2md: Windows"
+        ),
+        "docs/runtime-pipeline.md": (
+            "# coding-chong/frankensteined-pdf2md: Runtime Pipeline"
+        ),
+    }
+
+    for path, title in expected_titles.items():
+        document = _read(path)
+        assert document.startswith(title)
+        assert "OCR Flow" not in document
+        assert "Frank OCR" not in document
+
+
 def test_fresh_clone_guide_indexes_cpu_rapid_and_complex_matrix_contracts():
     guide = _read("docs/fresh-clone-setup.md")
 

@@ -1,4 +1,4 @@
-# Runtime Pipeline
+# coding-chong/frankensteined-pdf2md: Runtime Pipeline
 
 This document defines the executable PDF-to-Markdown path, its ownership
 boundaries, and the retained evidence for one Conversion Run. For an ordered
@@ -8,7 +8,7 @@ Windows installation use [fresh-clone-setup.md](fresh-clone-setup.md) first.
 
 | Component | Responsibility | Owner and readiness |
 | --- | --- | --- |
-| OCR Flow | Orchestrates a Conversion Run and persists recovery state. | checkout-root uv.lock; uv sync --locked --extra windows and uv run --locked --extra windows ocr-flow --help succeed. |
+| coding-chong/frankensteined-pdf2md | Orchestrates a Conversion Run and persists recovery state. | checkout-root uv.lock; uv sync --locked --extra windows and uv run --locked --extra windows ocr-flow --help succeed. |
 | Umi-OCR engine | Produces a layered PDF for scanned source documents. | User-acquired Windows runtime; file manifest plus GET /api/doc/get_options prove the selected Paddle or Rapid contract. |
 | BabelDOC Runtime Profile | Produces the optional bilingual Working Document. | Project-managed v0.6.3 runtime; cpu-safe is the CPU-only profile. |
 | Ghostscript | Compresses Conversion Segments as a system executable. | User-installed system executable; available through config path, PATH, or common Windows locations. |
@@ -61,7 +61,7 @@ POST /api/doc/download
 GET  /api/doc/clear/{task-id}
 ~~~
 
-OCR Flow first checks the options endpoint, then starts a discoverable local
+coding-chong/frankensteined-pdf2md first checks the options endpoint, then starts a discoverable local
 runtime when necessary. A service whose selectable values do not match the
 configured engine fails before upload. This prevents a running Paddle service
 from being mistaken for Rapid support.
@@ -97,7 +97,7 @@ The Windows DirectML profile is optional acceleration, not a prerequisite or
 a fallback for CPU-only machines. It must be selected explicitly and is
 described in [babeldoc-runtime-profiles.md](babeldoc-runtime-profiles.md).
 
-Ghostscript is external to the profile. OCR Flow uses it for non-translated
+Ghostscript is external to the profile. coding-chong/frankensteined-pdf2md uses it for non-translated
 segments; translated runs skip it by default to retain BabelDOC font
 subsetting, and use it only after explicit --compress. A downloaded installer,
 signature, or version string is provenance evidence, not compatibility proof.
@@ -122,7 +122,7 @@ splitting. Translation creates an alternating dual PDF; non-translated runs
 skip that stage. State records each completion or skip decision so recovery can
 avoid resubmitting completed MinerU parts.
 
-The BabelDOC command receives the real in-memory translation key, but OCR Flow
+The BabelDOC command receives the real in-memory translation key, but coding-chong/frankensteined-pdf2md
 redacts it from console output, log files, subprocess error excerpts, matrix
 progress, and retained reports.
 
