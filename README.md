@@ -16,7 +16,7 @@ token 和账户额度；使用 `--translate` 还需要兼容 OpenAI API 的翻�
 | --- | --- | --- |
 | 带可选中文字的文字 PDF，不翻译 | MinerU、Ghostscript | 从步骤 1 顺序完成到步骤 4 |
 | 扫描件或图片 PDF，不翻译 | MinerU、Ghostscript、[hiroi-sora/Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) 的已选引擎 | 从步骤 1 顺序完成到步骤 4 |
-| 需要翻译并保留双语 PDF | [opendatalab/MinerU](https://github.com/opendatalab/MinerU)、[funstory-ai/BabelDOC](https://github.com/funstory-ai/BabelDOC) v0.6.3、兼容 OpenAI API 的翻译服务 key（默认示例：DashScope `qwen3.5-flash`） | 从步骤 1 顺序完成到步骤 4 |
+| 需要翻译并保留双语 PDF | [opendatalab/MinerU](https://github.com/opendatalab/MinerU)、[funstory-ai/BabelDOC](https://github.com/funstory-ai/BabelDOC) v0.6.3、兼容 OpenAI API 的翻译服务 key（默认示例：DeepSeek `deepseek-chat`） | 从步骤 1 顺序完成到步骤 4 |
 
 扫描件是否需要 OCR，不以文件名判断：无法在 PDF 阅读器中选中正文文字时，按
 扫描件处理。`--lang en` 和 `--lang zh` 是源文档语言；非交互命令必须同时指定
@@ -58,7 +58,7 @@ CPU-only 机器的完整安装顺序、Rapid 下载、版本边界和本地验�
 | BabelDOC | [funstory-ai/BabelDOC](https://github.com/funstory-ai/BabelDOC) | 翻译时由本仓库管理固定的 v0.6.3 / `28f784ca6b437dbba040bfd9c67110373cd0924b` runtime。 |
 | MinerU | [opendatalab/MinerU](https://github.com/opendatalab/MinerU)；[官方平台](https://mineru.net/) | 每次 `process` 的 Markdown 结构化转换与 token 来源。 |
 
-翻译 provider 不是本项目指定或分发的依赖。DashScope `qwen3.5-flash` 是配置向导
+翻译 provider 不是本项目指定或分发的依赖。DeepSeek `deepseek-chat` 是配置向导
 的默认示例，用户可以自行配置任何兼容 OpenAI API 的服务和 key；不要把 key 写进
 仓库或命令示例。
 

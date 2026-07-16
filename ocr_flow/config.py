@@ -108,8 +108,8 @@ class BabelDocConfig:
     lang_in: str = "en-US"
     lang_out: str = "zh-CN"
     openai: bool = True
-    openai_model: str = "qwen3.5-flash"
-    openai_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    openai_model: str = "deepseek-chat"
+    openai_base_url: str = "https://api.deepseek.com"
     openai_api_key: str = ""
     qps: int = 2  # QPS limit for translation API (max recommended: 3)
     primary_font_family: Optional[str] = None

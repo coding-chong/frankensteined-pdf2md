@@ -109,7 +109,8 @@ class TestBabelDocConfig:
         assert config.lang_in == "en-US"
         assert config.lang_out == "zh-CN"
         assert config.openai == True
-        assert config.openai_model == "qwen3.5-flash"
+        assert config.openai_model == "deepseek-chat"
+        assert config.openai_base_url == "https://api.deepseek.com"
 
     def test_babeldoc_default_api_key(self):
         """Test default API key is empty."""

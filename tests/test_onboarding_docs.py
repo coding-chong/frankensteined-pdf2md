@@ -54,8 +54,8 @@ def test_readme_translation_row_names_actual_dependencies():
         "opendatalab/MinerU",
         "funstory-ai/BabelDOC",
         "v0.6.3",
-        "DashScope",
-        "qwen3.5-flash",
+        "DeepSeek",
+        "deepseek-chat",
         "默认示例",
     ):
         assert expected in translation_row

@@ -50,7 +50,7 @@ uv run --locked --extra windows ocr-flow --help
 | Umi-OCR Rapid | 扫描 PDF、CPU-only 路径、CPU/Rapid 矩阵 | 官方 GitHub release v2.1.5 的 Umi-OCR_Rapid_v2.1.5.7z.exe；不要下载 Paddle 包来代替 Rapid。 | 用户选定目录，例如 C:\Tools\Umi-OCR_Rapid_v2.1.5；config 的 umiocr.exe_path | verify_umiocr_runtime.py 加 --engine rapid，随后运行本地 layered-PDF smoke | 重新从官方 release 解压到新目录；不要提交 vendor binary；若 options 显示 Paddle model 路径，先关闭错误服务再启动 Rapid。 |
 | BabelDOC | 仅翻译 | 项目自动管理 v0.6.3，提交 28f784ca6b437dbba040bfd9c67110373cd0924b | checkout/.ocr-flow-runtime/BabelDOC，已被 Git 忽略 | runtime setup --profile cpu-safe，随后 runtime smoke | 运行 setup 重新创建项目托管目录。不要对自己的 checkout 运行 runtime setup --path，除非接受其破坏性清理。 |
 | MinerU token | 每个 process 和 live matrix；即使不翻译也需要 | 用户在 MinerU 账户中创建 token；服务版本不由 Python lock 控制 | 用户配置文件 %USERPROFILE%\.ocr-flow\config.toml 或 process 的 --config 文件 | ocr-flow doctor 只检查已配置，不提交请求 | 检查账户、额度和网络；不要把 token 放进仓库、日志或 issue。 |
-| 翻译 provider/key | 仅 --translate 和 live matrix 的两个翻译 case | 用户选择兼容 OpenAI API 的服务；默认配置示例是 DashScope qwen3.5-flash，不是项目锁定依赖 | 用户配置中的 babeldoc 段 | runtime smoke 只检查本地运行时；一次显式翻译才验证远端 key | 更新用户配置或 provider 配额；不要把 key 写入 README、测试或输出。 |
+| 翻译 provider/key | 仅 --translate 和 live matrix 的两个翻译 case | 用户选择兼容 OpenAI API 的服务；默认配置示例是 DeepSeek deepseek-chat，不是项目锁定依赖 | 用户配置中的 babeldoc 段 | runtime smoke 只检查本地运行时；一次显式翻译才验证远端 key | 更新用户配置或 provider 配额；不要把 key 写入 README、测试或输出。 |
 | 网络、防火墙、curl、PowerShell | Git clone、uv/BabelDOC 下载、MinerU 和翻译时需要出站 HTTPS | curl.exe 和 powershell.exe 是常见 Windows 自带工具，不是需要安装的项目依赖 | 系统 PATH | Get-Command curl.exe,powershell.exe | 缺少它们不阻止 requests 主路径；仅失去对应 MinerU ZIP 回退。检查企业防火墙、TLS inspection 和账户网络策略。 |
 
 PySocks 不在表中，也不是项目依赖：代码没有导入它，uv.lock 也没有锁定它。
