@@ -1,11 +1,160 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""PDF compression using Ghostscript."""
+"""PDF compression using Ghostscript and text-preservation validation."""
 
-import subprocess
+from dataclasses import asdict, dataclass
+from difflib import SequenceMatcher
 import shutil
+import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+import fitz
+
+
+MIN_MEANINGFUL_TEXT_CHARS = 1
+MIN_TEXT_SIMILARITY = 0.98
+
+
+@dataclass(frozen=True)
+class PageTextValidation:
+    """Credential-safe text comparison metrics for one PDF page."""
+
+    page: int
+    source_chars: int
+    candidate_chars: int
+    source_cjk_chars: int
+    candidate_cjk_chars: int
+    text_similarity: float
+    cjk_preserved: bool
+    preserved: bool
+
+
+@dataclass(frozen=True)
+class CompressionValidation:
+    """Structured result for a compressed PDF text-preservation check."""
+
+    preserved: bool
+    reason: str
+    source_pages: int
+    candidate_pages: int
+    source_has_meaningful_text: bool
+    minimum_text_similarity: float
+    pages: tuple[PageTextValidation, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable report without extracted document text."""
+        return asdict(self)
+
+
+def _normalize_text(text: str) -> str:
+    """Remove layout whitespace without rewriting document characters."""
+    return "".join(text.split())
+
+
+def _cjk_sequence(text: str) -> str:
+    """Extract CJK characters while preserving their order."""
+    return "".join(
+        char
+        for char in text
+        if "\u3400" <= char <= "\u4dbf"
+        or "\u4e00" <= char <= "\u9fff"
+        or "\uf900" <= char <= "\ufaff"
+    )
+
+
+def validate_compressed_pdf(
+    source_path: Path,
+    candidate_path: Path,
+) -> CompressionValidation:
+    """Verify that compression preserved each meaningful PDF text layer.
+
+    Image-only pages have no text invariant and therefore remain eligible for
+    compression. Any validation/read failure is reported by the caller as a
+    rejected candidate rather than silently sending an unchecked file onward.
+    """
+    source_path = Path(source_path)
+    candidate_path = Path(candidate_path)
+
+    with fitz.open(source_path) as source, fitz.open(candidate_path) as candidate:
+        source_pages = source.page_count
+        candidate_pages = candidate.page_count
+        if source_pages != candidate_pages:
+            return CompressionValidation(
+                preserved=False,
+                reason="page_count_mismatch",
+                source_pages=source_pages,
+                candidate_pages=candidate_pages,
+                source_has_meaningful_text=False,
+                minimum_text_similarity=0.0,
+                pages=(),
+            )
+
+        page_results = []
+        has_meaningful_text = False
+        for page_index in range(source_pages):
+            source_text = _normalize_text(source[page_index].get_text())
+            candidate_text = _normalize_text(candidate[page_index].get_text())
+            meaningful = len(source_text) >= MIN_MEANINGFUL_TEXT_CHARS
+            has_meaningful_text = has_meaningful_text or meaningful
+
+            if meaningful:
+                similarity = SequenceMatcher(
+                    None, source_text, candidate_text, autojunk=False
+                ).ratio()
+                source_cjk = _cjk_sequence(source_text)
+                candidate_cjk = _cjk_sequence(candidate_text)
+                cjk_preserved = not source_cjk or source_cjk == candidate_cjk
+                preserved = (
+                    bool(candidate_text)
+                    and similarity >= MIN_TEXT_SIMILARITY
+                    and cjk_preserved
+                )
+            else:
+                source_cjk = _cjk_sequence(source_text)
+                candidate_cjk = _cjk_sequence(candidate_text)
+                similarity = 1.0
+                cjk_preserved = True
+                preserved = True
+
+            page_results.append(
+                PageTextValidation(
+                    page=page_index + 1,
+                    source_chars=len(source_text),
+                    candidate_chars=len(candidate_text),
+                    source_cjk_chars=len(source_cjk),
+                    candidate_cjk_chars=len(candidate_cjk),
+                    text_similarity=similarity,
+                    cjk_preserved=cjk_preserved,
+                    preserved=preserved,
+                )
+            )
+
+    failed_pages = [page for page in page_results if not page.preserved]
+    if failed_pages:
+        reason = "text_not_preserved"
+        preserved = False
+    elif not has_meaningful_text:
+        reason = "image_only_source"
+        preserved = True
+    else:
+        reason = "text_preserved"
+        preserved = True
+
+    similarities = [
+        page.text_similarity
+        for page in page_results
+        if page.source_chars >= MIN_MEANINGFUL_TEXT_CHARS
+    ]
+    return CompressionValidation(
+        preserved=preserved,
+        reason=reason,
+        source_pages=source_pages,
+        candidate_pages=candidate_pages,
+        source_has_meaningful_text=has_meaningful_text,
+        minimum_text_similarity=min(similarities, default=1.0),
+        pages=tuple(page_results),
+    )
 
 
 def find_ghostscript() -> Optional[str]:
@@ -124,7 +273,7 @@ def compress_batch(
     input_files: list,
     output_dir: Path,
     config=None,
-    total_count: int = None,
+    total_count: Optional[int] = None,
 ) -> list:
     """Compress multiple PDF files.
 

@@ -20,6 +20,7 @@ from datetime import datetime
 from ocr_flow.pipeline import Pipeline
 from ocr_flow.config import Config
 from ocr_flow.state import State, StateManager
+from ocr_flow.steps.compress import CompressionValidation, PageTextValidation
 
 
 # =============================================================================
@@ -163,6 +164,7 @@ class TestPipelineRun:
 
     @patch('ocr_flow.pipeline.split_pdf')
     @patch('ocr_flow.pipeline.compress_pdf')
+    @patch('ocr_flow.pipeline.validate_compressed_pdf')
     @patch('ocr_flow.pipeline.MinerUClient')
     @patch('ocr_flow.pipeline.format_fix')
     @patch('ocr_flow.pipeline.download_images')
@@ -171,6 +173,7 @@ class TestPipelineRun:
         mock_download,
         mock_format,
         mock_mineru,
+        mock_validate,
         mock_compress,
         mock_split,
         mock_config,
@@ -181,6 +184,15 @@ class TestPipelineRun:
         # Setup mocks
         mock_split.return_value = [output_dir / "part_001.pdf"]
         mock_compress.return_value = output_dir / "compressed_001.pdf"
+        mock_validate.return_value = CompressionValidation(
+            preserved=True,
+            reason="text_preserved",
+            source_pages=1,
+            candidate_pages=1,
+            source_has_meaningful_text=True,
+            minimum_text_similarity=1.0,
+            pages=(),
+        )
         mock_mineru_instance = MagicMock()
         mock_mineru_instance.convert.return_value = output_dir / "output.md"
         mock_mineru.return_value = mock_mineru_instance
@@ -204,6 +216,83 @@ class TestPipelineRun:
         # Verify steps were called
         mock_split.assert_called_once()
         mock_compress.assert_called_once()
+        submitted_pdf = mock_mineru_instance.convert.call_args.args[0]
+        assert submitted_pdf.name == "compressed_001.pdf"
+
+    @patch('ocr_flow.pipeline.download_images')
+    @patch('ocr_flow.pipeline.format_fix')
+    @patch('ocr_flow.pipeline.MinerUClient')
+    @patch('ocr_flow.pipeline.validate_compressed_pdf')
+    @patch('ocr_flow.pipeline.compress_pdf')
+    @patch('ocr_flow.pipeline.split_pdf')
+    def test_rejects_corrupted_compression_and_records_text_safe_input(
+        self,
+        mock_split,
+        mock_compress,
+        mock_validate,
+        mock_mineru,
+        mock_format,
+        mock_download,
+        mock_config,
+        text_pdf,
+        output_dir,
+    ):
+        split_file = output_dir / "part_001.pdf"
+        candidate = output_dir / "compressed_part_001.pdf"
+        split_file.write_bytes(b"split-pdf")
+        candidate.write_bytes(b"candidate-pdf")
+        mock_split.return_value = [split_file]
+        mock_compress.return_value = candidate
+        mock_validate.return_value = CompressionValidation(
+            preserved=False,
+            reason="text_not_preserved",
+            source_pages=1,
+            candidate_pages=1,
+            source_has_meaningful_text=True,
+            minimum_text_similarity=0.81,
+            pages=(
+                PageTextValidation(
+                    page=1,
+                    source_chars=120,
+                    candidate_chars=121,
+                    source_cjk_chars=100,
+                    candidate_cjk_chars=100,
+                    text_similarity=0.81,
+                    cjk_preserved=False,
+                    preserved=False,
+                ),
+            ),
+        )
+
+        def convert_side_effect(pdf_path, part_dir):
+            markdown = Path(part_dir) / "full.md"
+            markdown.write_text("# safe", encoding="utf-8")
+            return markdown
+
+        mock_mineru_instance = MagicMock()
+        mock_mineru_instance.convert.side_effect = convert_side_effect
+        mock_mineru.return_value = mock_mineru_instance
+        mock_download.return_value = (True, [])
+
+        pipeline = Pipeline(config=mock_config)
+        pipeline.run(text_pdf, output_dir, pdf_type="text")
+
+        selected = mock_mineru_instance.convert.call_args.args[0]
+        assert selected.name == "text_safe_part_001.pdf"
+        assert selected.read_bytes() == b"split-pdf"
+        assert candidate.exists()
+
+        state_path = next(output_dir.rglob(".state.json"))
+        saved_state = State.load(state_path)
+        assert saved_state is not None
+        compress_step = saved_state.get_step_status("compress")
+        assert compress_step.files == ["text_safe_part_001.pdf"]
+
+        report_path = selected.parent / "compression_validation.json"
+        report = report_path.read_text(encoding="utf-8")
+        assert '"candidate_file": "compressed_part_001.pdf"' in report
+        assert '"selected_file": "text_safe_part_001.pdf"' in report
+        assert "小信号" not in report
 
     def test_run_creates_output_directory(self, mock_config, text_pdf, output_dir):
         """Test that run creates output directory."""
@@ -389,7 +478,8 @@ class TestPipelineRecovery:
             split_file.write_bytes(b"%PDF")
             split_files.append(split_file)
 
-            compressed_file = compress_dir / f"compressed_part_{i:03d}.pdf"
+            prefix = "text_safe" if i == 2 else "compressed"
+            compressed_file = compress_dir / f"{prefix}_part_{i:03d}.pdf"
             compressed_file.write_bytes(b"%PDF")
             compressed_files.append(compressed_file)
 
@@ -447,7 +537,7 @@ class TestPipelineRecovery:
         mock_split.assert_not_called()
         mock_compress.assert_not_called()
         retried_parts = [call.args[0].name for call in mock_mineru_instance.convert.call_args_list]
-        assert retried_parts == ["compressed_part_002.pdf", "compressed_part_003.pdf"]
+        assert retried_parts == ["text_safe_part_002.pdf", "compressed_part_003.pdf"]
         assert (final_dir / "part_001.md").exists()
         assert (final_dir / "part_002.md").exists()
         assert (final_dir / "part_003.md").exists()

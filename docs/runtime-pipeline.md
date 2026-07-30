@@ -128,7 +128,11 @@ segments; translated runs skip it by default to retain BabelDOC font
 subsetting, and use it only after explicit --compress. A downloaded installer,
 signature, or version string is provenance evidence, not compatibility proof.
 Compatibility requires an actual compressed PDF that opens with the original
-page count.
+page count. Before MinerU submission, every compressed segment is also checked
+against its split input. Whitespace-normalized text must remain equivalent and
+the ordered CJK character sequence must be unchanged. Page-count equality
+alone is not sufficient because Ghostscript can preserve pages while mutating
+an OCR text layer.
 
 ## Conversion Flow
 
@@ -138,6 +142,7 @@ Source Document
   -> optional Translation Enrichment
   -> Split into Conversion Segments
   -> Compression when enabled
+  -> Text-preservation validation; unsafe candidates use the split fallback
   -> MinerU upload, polling, result ZIP download, extraction
   -> Markdown normalization and image localization
   -> Final Markdown Pages
@@ -204,6 +209,10 @@ Every Conversion Run creates:
   .state.json
   ocr-flow.log
   intermediate/
+    compressed/
+      compressed_part_*.pdf
+      text_safe_part_*.pdf (only when a candidate is rejected)
+      compression_validation.json
   final/
     part_001.md ...
     images/
@@ -213,7 +222,11 @@ Every Conversion Run creates:
 
 The state file is the recovery source of truth. It records skipped optional
 stages, completed MinerU segments, and failed segments. Use recovery continue,
-retry, or continue_retry rather than resubmitting successful parts.
+retry, or continue_retry rather than resubmitting successful parts. The
+compression step records only the selected MinerU inputs: accepted compressed
+candidates or clearly named `text_safe_` split copies. Rejected Ghostscript
+candidates and a credential-safe numeric validation report remain available
+for diagnosis but are never reloaded as processing inputs.
 
 ## Regression Assets
 

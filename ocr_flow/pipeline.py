@@ -5,13 +5,14 @@
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+import json
 import shutil
 import logging
 
 from .config import Config
-from .state import State, StateManager
+from .state import StateManager
 from .steps.split import split_pdf
-from .steps.compress import compress_pdf, find_ghostscript
+from .steps.compress import compress_pdf, validate_compressed_pdf
 from .steps.mineru import MinerUClient
 from .steps.format_fix import format_fix
 from .steps.image_download import download_images
@@ -175,8 +176,8 @@ class Pipeline:
         language: str = "en",
         translate: bool = False,
         compress: bool = False,
-        recovery_mode: str = None,
-        state_info: Dict[str, Any] = None,
+        recovery_mode: Optional[str] = None,
+        state_info: Optional[Dict[str, Any]] = None,
         ocr_timeout: Optional[int] = None,
         ocr_language: Optional[str] = None,
     ) -> Path:
@@ -241,7 +242,7 @@ class Pipeline:
         current_pdf = input_pdf
 
         # S1.2: Use GracefulExit to handle Ctrl+C
-        with GracefulExitContext(self.state_manager) as graceful:
+        with GracefulExitContext(self.state_manager):
             try:
                 ocr_step = state.get_step_status("ocr")
                 translate_step = state.get_step_status("translate")
@@ -330,16 +331,75 @@ class Pipeline:
                         compress_dir = Path(compress_step.output_dir)
                     else:
                         if self.verbose:
-                            print(f"[4/7] Compressing PDF files...")
+                            print("[4/7] Compressing PDF files...")
                         self.logger.info("Step 4: Compressing PDF files")
 
                         compress_dir = intermediate_dir / "compressed"
                         compress_dir.mkdir(exist_ok=True)
                         compressed_files = []
+                        validation_reports = []
                         for split_file in split_files:
                             compressed = compress_pdf(split_file, compress_dir, self.config)
-                            compressed_files.append(compressed)
                             self.state_manager.backup_file("compress", compressed)
+
+                            try:
+                                validation = validate_compressed_pdf(split_file, compressed)
+                                report = validation.to_dict()
+                            except Exception as exc:
+                                validation = None
+                                report = {
+                                    "preserved": False,
+                                    "reason": "validation_error",
+                                    "source_pages": None,
+                                    "candidate_pages": None,
+                                    "source_has_meaningful_text": None,
+                                    "minimum_text_similarity": 0.0,
+                                    "pages": [],
+                                    "error_type": type(exc).__name__,
+                                }
+
+                            selected = compressed
+                            if validation is None or not validation.preserved:
+                                selected = compress_dir / f"text_safe_{split_file.name}"
+                                shutil.copy2(split_file, selected)
+                                self.state_manager.backup_file("compress", selected)
+                                self.logger.warning(
+                                    "Compression text validation rejected part=%s "
+                                    "reason=%s minimum_similarity=%.6f; using=%s",
+                                    split_file.name,
+                                    report["reason"],
+                                    report["minimum_text_similarity"],
+                                    selected.name,
+                                )
+                            else:
+                                self.logger.info(
+                                    "Compression text validation accepted part=%s "
+                                    "reason=%s minimum_similarity=%.6f",
+                                    split_file.name,
+                                    validation.reason,
+                                    validation.minimum_text_similarity,
+                                )
+
+                            report.update(
+                                {
+                                    "source_file": split_file.name,
+                                    "candidate_file": compressed.name,
+                                    "selected_file": selected.name,
+                                }
+                            )
+                            validation_reports.append(report)
+                            compressed_files.append(selected)
+
+                        validation_report_path = compress_dir / "compression_validation.json"
+                        validation_report_path.write_text(
+                            json.dumps(
+                                {"version": 1, "parts": validation_reports},
+                                ensure_ascii=False,
+                                indent=2,
+                            ),
+                            encoding="utf-8",
+                        )
+                        self.state_manager.backup_file("compress", validation_report_path)
 
                         state.update_step("compress", status="completed", output_dir=str(compress_dir),
                                         files=[f.name for f in compressed_files])

@@ -183,6 +183,13 @@ progress log, contact sheets, and human visual inspection. A green pytest exit
 alone is insufficient for formulas, OCR text layers, Chinese glyphs, layout,
 or compressed content.
 
+Ghostscript output is an untrusted candidate until the compression boundary
+compares its extractable text with the split input. Keep reports numeric and
+credential-safe; never include extracted document text. A rejected candidate
+must remain as evidence while MinerU receives the `text_safe_` split copy, and
+the compression state's file list must persist that same selection for every
+recovery mode. Do not weaken this contract to page-count-only validation.
+
 ## Documentation Ownership
 
 When behavior changes:

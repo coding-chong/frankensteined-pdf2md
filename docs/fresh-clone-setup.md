@@ -124,10 +124,10 @@ uv run --locked --extra windows ocr-flow runtime status
 证明没有隐藏配置/源码依赖；只有在物理上没有 GPU 的主机上完成以上 Rapid 与
 cpu-safe smoke，才是硬件独立性的最终证明。
 
-若更换 Ghostscript，先以本地一页 fixture 验证输出能打开且页数不变：
+若更换 Ghostscript，先以本地一页 fixture 验证输出能打开、页数不变且文本层保持：
 
 ~~~powershell
-uv run --locked --extra windows python -c "from pathlib import Path; import fitz; from ocr_flow.config import Config; from ocr_flow.steps.compress import compress_pdf; c=Config(); c.compress.ghostscript_path=r'C:\path\to\gswin64c.exe'; p=compress_pdf(Path('test_assets/test_page_text.pdf'), Path('output/ghostscript-smoke'), c); print(f'{p} pages={fitz.open(p).page_count}')"
+uv run --locked --extra windows python -c "from pathlib import Path; from ocr_flow.config import Config; from ocr_flow.steps.compress import compress_pdf, validate_compressed_pdf; c=Config(); c.compress.ghostscript_path=r'C:\path\to\gswin64c.exe'; src=Path('test_assets/test_page_text.pdf'); out=compress_pdf(src, Path('output/ghostscript-smoke'), c); print(validate_compressed_pdf(src, out).to_dict())"
 ~~~
 
 ### Ghostscript 到底什么时候使用
@@ -143,6 +143,12 @@ uv run --locked --extra windows python -c "from pathlib import Path; import fitz
 因此，只做翻译且不压缩的用户可以不安装 Ghostscript；任何不翻译的正常转换都
 必须先让 `doctor` 找到可用的 Ghostscript。完整四案例矩阵同时包含非翻译压缩和
 翻译压缩案例，所以矩阵始终要求 Ghostscript。
+
+Ghostscript 被调用不代表其输出一定进入 MinerU。每个候选都会与拆分页逐页比较
+文本层；页数变化、文本丢失、显著字符变化或 CJK 序列变化都会触发自动回退。
+被拒绝的 `compressed_*.pdf` 留作诊断，MinerU 改用同目录的
+`text_safe_part_*.pdf`，选择结果写入 `compression_validation.json` 和状态文件。
+纯图片拆分页没有可比较文本层，仍按原规则使用压缩结果。
 
 ## 5. 新机验证用处理命令
 
@@ -209,7 +215,9 @@ uv run --locked --extra windows ocr-flow process test_assets\test_page_text.pdf 
 每次 Conversion Run 在输出根目录下保留时间戳目录、.state.json、ocr-flow.log、
 intermediate、final Markdown、images 和可选 compressed_pdfs。翻译的 dual PDF
 保留在 intermediate；使用 --compress 时压缩翻译片段在
-final/compressed_pdfs。先人工打开 PDF，再检查 final 中的 Markdown 和图片链接。
+final/compressed_pdfs。若压缩文本校验失败，该目录会包含名称明确的
+`text_safe_part_*.pdf` 回退输入，而不是把不安全候选交给 MinerU。先人工打开 PDF，
+再检查 final 中的 Markdown 和图片链接。
 
 处理中断时重用 .state.json，而不是重新提交已经成功的 MinerU 分段：
 

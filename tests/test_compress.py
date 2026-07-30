@@ -20,6 +20,7 @@ from ocr_flow.steps.compress import (
     find_ghostscript,
     compress_pdf,
     compress_batch,
+    validate_compressed_pdf,
 )
 
 
@@ -93,6 +94,96 @@ def multi_page_pdfs(temp_dir):
         pdfs.append(pdf_path)
 
     return pdfs
+
+
+def create_text_pdf(path, pages):
+    """Create a deterministic PDF with extractable CJK text."""
+    import fitz
+
+    doc = fitz.open()
+    for text in pages:
+        page = doc.new_page()
+        if text is not None:
+            page.insert_text((72, 72), text, fontname="china-s")
+    doc.save(path)
+    doc.close()
+    return path
+
+
+# =============================================================================
+# TestCompressionTextValidation - Semantic Safety Tests
+# =============================================================================
+
+class TestCompressionTextValidation:
+    """Tests for the post-compression text-preservation invariant."""
+
+    def test_accepts_unchanged_text(self, temp_dir):
+        source = create_text_pdf(temp_dir / "source.pdf", ["Small signal model 123"])
+        candidate = create_text_pdf(temp_dir / "candidate.pdf", ["Small signal model 123"])
+
+        result = validate_compressed_pdf(source, candidate)
+
+        assert result.preserved is True
+        assert result.reason == "text_preserved"
+        assert result.minimum_text_similarity == 1.0
+
+    def test_accepts_whitespace_only_changes(self, temp_dir):
+        source = create_text_pdf(temp_dir / "source.pdf", ["Small signal model"])
+        candidate = create_text_pdf(temp_dir / "candidate.pdf", ["Small   signal\nmodel"])
+
+        result = validate_compressed_pdf(source, candidate)
+
+        assert result.preserved is True
+        assert result.minimum_text_similarity == 1.0
+
+    def test_rejects_cjk_character_mutation(self, temp_dir):
+        source = create_text_pdf(temp_dir / "source.pdf", ["小信号分析是一种电路分析技术"])
+        candidate = create_text_pdf(temp_dir / "candidate.pdf", ["嬏信号分析是一种电路分析技术"])
+
+        result = validate_compressed_pdf(source, candidate)
+
+        assert result.preserved is False
+        assert result.reason == "text_not_preserved"
+        assert result.pages[0].cjk_preserved is False
+
+    def test_rejects_missing_candidate_text(self, temp_dir):
+        source = create_text_pdf(temp_dir / "source.pdf", ["Meaningful source text"])
+        candidate = create_text_pdf(temp_dir / "candidate.pdf", [None])
+
+        result = validate_compressed_pdf(source, candidate)
+
+        assert result.preserved is False
+        assert result.pages[0].candidate_chars == 0
+
+    def test_rejects_page_count_mismatch(self, temp_dir):
+        source = create_text_pdf(temp_dir / "source.pdf", ["Page one text", "Page two text"])
+        candidate = create_text_pdf(temp_dir / "candidate.pdf", ["Page one text"])
+
+        result = validate_compressed_pdf(source, candidate)
+
+        assert result.preserved is False
+        assert result.reason == "page_count_mismatch"
+        assert result.source_pages == 2
+        assert result.candidate_pages == 1
+
+    def test_accepts_image_only_source(self, temp_dir):
+        source = create_text_pdf(temp_dir / "source.pdf", [None])
+        candidate = create_text_pdf(temp_dir / "candidate.pdf", [None])
+
+        result = validate_compressed_pdf(source, candidate)
+
+        assert result.preserved is True
+        assert result.reason == "image_only_source"
+        assert result.source_has_meaningful_text is False
+
+    def test_page_count_alone_would_miss_text_corruption(self, temp_dir):
+        source = create_text_pdf(temp_dir / "source.pdf", ["小信号分析是一种电路分析技术"])
+        candidate = create_text_pdf(temp_dir / "candidate.pdf", ["嬏信号分析是一种电路分析技术"])
+
+        result = validate_compressed_pdf(source, candidate)
+
+        assert result.source_pages == result.candidate_pages
+        assert result.preserved is False
 
 
 # =============================================================================
