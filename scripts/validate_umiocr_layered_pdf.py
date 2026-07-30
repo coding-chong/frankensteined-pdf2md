@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Iterable, List, Optional
 
 import fitz
 
@@ -54,19 +56,42 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Optional JSON report path for machine-readable validation evidence",
     )
+    parser.add_argument(
+        "--expected-text",
+        type=Path,
+        help="JSON fixture manifest or newline-delimited anchor text",
+    )
+    parser.add_argument(
+        "--min-chinese-characters",
+        type=int,
+        default=0,
+        help="Require at least this many CJK characters in extracted text",
+    )
+    parser.add_argument(
+        "--provider-mode",
+        choices=("cpu", "gpu"),
+        help="Also verify the plugin provider environment before OCR",
+    )
     return parser.parse_args()
 
 
-def _verify_runtime(executable: Path, engine: str) -> None:
+def _verify_runtime(
+    executable: Path,
+    engine: str,
+    provider_mode: Optional[str] = None,
+) -> dict[str, object]:
+    command = [
+        sys.executable,
+        str(VERIFY_SCRIPT),
+        "--path",
+        str(executable.parent),
+        "--engine",
+        engine,
+    ]
+    if provider_mode:
+        command.extend(["--check-environment", "--provider-mode", provider_mode])
     result = subprocess.run(
-        [
-            sys.executable,
-            str(VERIFY_SCRIPT),
-            "--path",
-            str(executable.parent),
-            "--engine",
-            engine,
-        ],
+        command,
         cwd=PROJECT_ROOT,
         text=True,
         capture_output=True,
@@ -76,10 +101,70 @@ def _verify_runtime(executable: Path, engine: str) -> None:
         detail = (result.stderr or result.stdout).strip()
         raise RuntimeError(f"UMI OCR runtime verification failed: {detail}")
     print(result.stdout.strip())
+    environment_line = next(
+        (
+            line
+            for line in result.stdout.splitlines()
+            if line.startswith("Environment: ")
+        ),
+        None,
+    )
+    if environment_line:
+        try:
+            return json.loads(environment_line[len("Environment: ") :])
+        except json.JSONDecodeError as error:
+            raise RuntimeError(f"UMI OCR environment report is invalid: {error}") from error
+    return {}
 
 
-def inspect_layered_pdf(input_path: Path, output_path: Path) -> dict[str, int]:
-    """Reject missing, page-mismatched, or textless local OCR output."""
+def _normalize_anchor(value: str) -> str:
+    return re.sub(r"\s+", "", value)
+
+
+def _is_cjk(value: str) -> bool:
+    return any(
+        start <= ord(value) <= end
+        for start, end in (
+            (0x3400, 0x4DBF),
+            (0x4E00, 0x9FFF),
+            (0xF900, 0xFAFF),
+        )
+    )
+
+
+def load_expected_anchors(path: Optional[Path]) -> List[str]:
+    """Load anchor strings from a fixture manifest or plain-text file."""
+    if path is None:
+        return []
+    if not path.is_file():
+        raise RuntimeError(f"Expected-text file does not exist: {path}")
+    if path.suffix.lower() == ".json":
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise RuntimeError(f"Expected-text manifest is unreadable: {error}") from error
+        anchors = payload.get("anchors") if isinstance(payload, dict) else None
+    else:
+        anchors = path.read_text(encoding="utf-8").splitlines()
+    if not isinstance(anchors, list) or not all(isinstance(item, str) for item in anchors):
+        raise RuntimeError("Expected-text manifest must contain an anchors list")
+    anchors = [item.strip() for item in anchors if item.strip()]
+    if not anchors:
+        raise RuntimeError("Expected-text manifest contains no anchors")
+    return anchors
+
+
+def inspect_layered_pdf(
+    input_path: Path,
+    output_path: Path,
+    *,
+    expected_anchors: Optional[Iterable[str]] = None,
+    min_chinese_characters: int = 0,
+) -> dict[str, object]:
+    """Reject missing, page-mismatched, textless, or low-quality OCR output."""
+    if min_chinese_characters < 0:
+        raise ValueError("min_chinese_characters must be non-negative")
+    anchors = list(expected_anchors) if expected_anchors is not None else None
     if not output_path.is_file() or output_path.stat().st_size == 0:
         raise RuntimeError(f"UMI OCR did not create a readable output file: {output_path}")
 
@@ -91,10 +176,37 @@ def inspect_layered_pdf(input_path: Path, output_path: Path) -> dict[str, int]:
                 "Layered PDF page count does not match input: "
                 f"{layered.page_count} != {source.page_count}"
             )
-        text_characters = sum(len(page.get_text("text").strip()) for page in layered)
+        extracted_text = "\n".join(page.get_text("text").strip() for page in layered)
+        text_characters = len(extracted_text.strip())
         if text_characters == 0:
             raise RuntimeError("Layered PDF has no extractable text layer")
-        return {"pages": layered.page_count, "text_characters": text_characters}
+        result: dict[str, object] = {
+            "pages": layered.page_count,
+            "text_characters": text_characters,
+        }
+        if min_chinese_characters or anchors is not None:
+            chinese_characters = sum(1 for value in extracted_text if _is_cjk(value))
+            result["chinese_characters"] = chinese_characters
+            if chinese_characters < min_chinese_characters:
+                raise RuntimeError(
+                    "Layered PDF has too few Chinese characters: "
+                    f"{chinese_characters} < {min_chinese_characters}"
+                )
+        if anchors is not None:
+            normalized_text = _normalize_anchor(extracted_text)
+            missing = [
+                anchor
+                for anchor in anchors
+                if _normalize_anchor(anchor) not in normalized_text
+            ]
+            result["expected_anchors"] = anchors
+            result["missing_anchors"] = missing
+            if missing:
+                raise RuntimeError(
+                    "Layered PDF is missing expected OCR anchors: "
+                    + ", ".join(missing)
+                )
+        return result
     finally:
         layered.close()
         source.close()
@@ -124,7 +236,7 @@ def main() -> int:
     from ocr_flow.config import Config, resolve_umiocr_language
     from ocr_flow.steps.ocr import ocr_pdf
 
-    _verify_runtime(executable, args.engine)
+    environment = _verify_runtime(executable, args.engine, args.provider_mode)
     config = Config()
     config.umiocr.engine = args.engine
     config.umiocr.language = resolve_umiocr_language(
@@ -141,7 +253,13 @@ def main() -> int:
         timeout=args.timeout,
         ocr_language=config.umiocr.language,
     )
-    result = inspect_layered_pdf(input_path, output_path)
+    expected_anchors = load_expected_anchors(args.expected_text)
+    result = inspect_layered_pdf(
+        input_path,
+        output_path,
+        expected_anchors=expected_anchors if args.expected_text else None,
+        min_chinese_characters=args.min_chinese_characters,
+    )
     manifest = {}
     try:
         from ocr_flow.runtime import load_umiocr_manifest
@@ -168,6 +286,8 @@ def main() -> int:
                 "backend": (
                     manifest.get("backend") if isinstance(manifest, dict) else None
                 ),
+                "provider_mode": args.provider_mode,
+                "environment": environment,
                 "plugin": plugin,
                 **result,
             },

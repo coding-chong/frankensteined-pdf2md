@@ -1,0 +1,37 @@
+{
+  "fixture_version": 1,
+  "filename": "chinese_scanned_ocr_test.pdf",
+  "sha256": "37016D1EC51D5EF9C63EC77E81D316AB81D3FFE52E5E2D42F0A5FC8FDB19D287",
+  "pages": 2,
+  "page_size_points": [
+    612,
+    792
+  ],
+  "render_scale": 2,
+  "font": "msyh.ttc",
+  "image_only": true,
+  "anchors": [
+    "中文 OCR 验证页一",
+    "电力电子",
+    "变压器与电感器设计",
+    "项目本地模型缓存",
+    "CUDA 执行提供器",
+    "中文 OCR 测试完成"
+  ],
+  "page_text": [
+    [
+      "中文 OCR 验证页一",
+      "这是一个用于 Frank PDF2MD 的简体中文扫描测试。",
+      "章节锚点：电力电子、变压器与电感器设计。",
+      "数字与符号：2026 年 7 月 30 日，输入电压 220 V，效率 95.6%。",
+      "英文混排：NeoEngine ONNX GPU。"
+    ],
+    [
+      "中文 OCR 验证页二",
+      "第二页检查多行段落、标点和括号。",
+      "关键短语：项目本地模型缓存、CUDA 执行提供器、文本层。",
+      "请保持原文顺序，不要删除中文字符。",
+      "结束标记：中文 OCR 测试完成。"
+    ]
+  ]
+}

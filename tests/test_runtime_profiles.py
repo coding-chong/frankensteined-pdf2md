@@ -162,14 +162,14 @@ def test_umiocr_verifier_reports_hash_mismatch(tmp_path):
     ]
 
 
-def _neoengine_environment_root(tmp_path):
+def _neoengine_environment_root(tmp_path, environment_name=".venv"):
     plugin_root = (
         tmp_path
         / "UmiOCR-data"
         / "plugins"
         / "win_x64_PaddleOCR_Py"
     )
-    interpreter = plugin_root / ".venv" / "Scripts" / "python.exe"
+    interpreter = plugin_root / environment_name / "Scripts" / "python.exe"
     interpreter.parent.mkdir(parents=True)
     interpreter.write_bytes(b"placeholder")
     for model in (
@@ -291,6 +291,83 @@ def test_neoengine_environment_verifier_fails_when_model_cache_is_missing(
 
     assert failures == [
         "Missing cached NeoEngine model: PP-OCRv6_medium_rec_onnx"
+    ]
+
+
+def test_neoengine_gpu_environment_requires_cuda_provider(monkeypatch, tmp_path):
+    root = tmp_path
+    _neoengine_environment_root(root, ".venv_gpu")
+    manifest = runtime.load_umiocr_manifest("paddle")
+    probe_output = (
+        '__OCR_FLOW_ENV__{"python":"gpu-python","paddle":"3.2.1",'
+        '"paddleocr":"3.7.0","onnxruntime":"1.26.0",'
+        '"providers":["CUDAExecutionProvider","CPUExecutionProvider"],'
+        '"device":"GPU"}'
+    )
+
+    class Result:
+        returncode = 0
+        stdout = probe_output
+        stderr = ""
+
+    monkeypatch.setattr(
+        verify_umiocr_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    failures, observations = verify_umiocr_runtime.probe_plugin_environment(
+        root, manifest, "gpu"
+    )
+
+    assert failures == []
+    assert observations["provider_mode"] == "gpu"
+    assert "CUDAExecutionProvider" in observations["providers"]
+    assert observations["device"] == "GPU"
+
+
+def test_neoengine_gpu_environment_fails_closed_without_cuda_provider(
+    monkeypatch, tmp_path
+):
+    root = tmp_path
+    _neoengine_environment_root(root, ".venv_gpu")
+    manifest = runtime.load_umiocr_manifest("paddle")
+    probe_output = (
+        '__OCR_FLOW_ENV__{"python":"gpu-python","paddle":"3.2.1",'
+        '"paddleocr":"3.7.0","onnxruntime":"1.26.0",'
+        '"providers":["CPUExecutionProvider"],"device":"CPU"}'
+    )
+
+    class Result:
+        returncode = 0
+        stdout = probe_output
+        stderr = ""
+
+    monkeypatch.setattr(
+        verify_umiocr_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    failures = verify_umiocr_runtime.verify_plugin_environment(
+        root, manifest, "gpu"
+    )
+
+    assert "ONNX Runtime has no CUDAExecutionProvider" in failures[0]
+    assert "ONNX Runtime device is not GPU" in failures[1]
+
+
+def test_neoengine_gpu_environment_does_not_reuse_cpu_venv(tmp_path):
+    root = tmp_path
+    _neoengine_environment_root(root, ".venv")
+    manifest = runtime.load_umiocr_manifest("paddle")
+
+    failures = verify_umiocr_runtime.verify_plugin_environment(
+        root, manifest, "gpu"
+    )
+
+    assert failures == [
+        "NeoEngine gpu Python environment is missing (.venv_gpu)"
     ]
 
 

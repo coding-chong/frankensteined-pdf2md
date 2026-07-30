@@ -3,6 +3,7 @@
 from importlib.util import module_from_spec, spec_from_file_location
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import fitz
 import pytest
@@ -22,6 +23,27 @@ def _write_pdf(path: Path, text: str = "") -> None:
         page.insert_text((72, 72), text)
     document.save(path)
     document.close()
+
+
+class _FakePage:
+    def __init__(self, text: str):
+        self._text = text
+
+    def get_text(self, _kind: str) -> str:
+        return self._text
+
+
+class _FakeDocument:
+    page_count = 1
+
+    def __init__(self, text: str):
+        self._page = _FakePage(text)
+
+    def __iter__(self):
+        return iter((self._page,))
+
+    def close(self) -> None:
+        return None
 
 
 def test_layered_pdf_validator_accepts_matching_text_layer(tmp_path):
@@ -65,3 +87,47 @@ def test_layered_pdf_validator_writes_machine_readable_report(tmp_path):
         "pages": 1,
         "text_characters": 12,
     }
+
+
+def test_layered_pdf_validator_checks_chinese_count_and_anchors(tmp_path):
+    source = tmp_path / "source.pdf"
+    layered = tmp_path / "layered.pdf"
+    source.write_bytes(b"source")
+    layered.write_bytes(b"layered")
+    with patch.object(
+        validator.fitz, "open", side_effect=(
+            _FakeDocument(""),
+            _FakeDocument("\u4e2d\u6587 OCR \u951a\u70b9"),
+        ),
+    ):
+        result = validator.inspect_layered_pdf(
+            source,
+            layered,
+            expected_anchors=["\u4e2d\u6587 OCR \u951a\u70b9"],
+            min_chinese_characters=4,
+        )
+
+    assert result["pages"] == 1
+    assert result["chinese_characters"] >= 4
+    assert result["missing_anchors"] == []
+
+
+def test_layered_pdf_validator_rejects_missing_chinese_anchor(tmp_path):
+    source = tmp_path / "source.pdf"
+    layered = tmp_path / "layered.pdf"
+    source.write_bytes(b"source")
+    layered.write_bytes(b"layered")
+
+    with patch.object(
+        validator.fitz, "open", side_effect=(
+            _FakeDocument(""),
+            _FakeDocument("English only"),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="expected OCR anchors"):
+            validator.inspect_layered_pdf(
+                source,
+                layered,
+                expected_anchors=["\u4e2d\u6587\u951a\u70b9"],
+                min_chinese_characters=0,
+            )
