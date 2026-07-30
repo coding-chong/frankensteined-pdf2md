@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -47,6 +48,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=600,
         help="End-to-end OCR timeout in seconds",
+    )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help="Optional JSON report path for machine-readable validation evidence",
     )
     return parser.parse_args()
 
@@ -94,6 +100,15 @@ def inspect_layered_pdf(input_path: Path, output_path: Path) -> dict[str, int]:
         source.close()
 
 
+def _write_report(path: Path, report: dict[str, object]) -> None:
+    """Persist redaction-safe local validation evidence as JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(report, ensure_ascii=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     args = parse_args()
     input_path = args.input.expanduser().resolve()
@@ -127,6 +142,36 @@ def main() -> int:
         ocr_language=config.umiocr.language,
     )
     result = inspect_layered_pdf(input_path, output_path)
+    manifest = {}
+    try:
+        from ocr_flow.runtime import load_umiocr_manifest
+
+        manifest = load_umiocr_manifest(args.engine)
+    except (OSError, ValueError, KeyError):
+        pass
+    if args.report:
+        plugin = manifest.get("plugin", {}) if isinstance(manifest, dict) else {}
+        _write_report(
+            args.report.expanduser().resolve(),
+            {
+                "input": str(input_path),
+                "output": str(output_path),
+                "umiocr": str(executable),
+                "engine": args.engine,
+                "language": config.umiocr.language,
+                "runtime": (
+                    manifest.get("runtime") if isinstance(manifest, dict) else None
+                ),
+                "runtime_version": (
+                    manifest.get("version") if isinstance(manifest, dict) else None
+                ),
+                "backend": (
+                    manifest.get("backend") if isinstance(manifest, dict) else None
+                ),
+                "plugin": plugin,
+                **result,
+            },
+        )
     print(
         "Layered PDF validation passed: "
         f"pages={result['pages']} text_characters={result['text_characters']} output={output_path}"

@@ -162,6 +162,168 @@ def test_umiocr_verifier_reports_hash_mismatch(tmp_path):
     ]
 
 
+def _neoengine_environment_root(tmp_path):
+    plugin_root = (
+        tmp_path
+        / "UmiOCR-data"
+        / "plugins"
+        / "win_x64_PaddleOCR_Py"
+    )
+    interpreter = plugin_root / ".venv" / "Scripts" / "python.exe"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.write_bytes(b"placeholder")
+    for model in (
+        "PP-OCRv6_medium_det_onnx",
+        "PP-OCRv6_medium_rec_onnx",
+    ):
+        model_path = plugin_root / "paddlex" / "official_models" / model
+        model_path.mkdir(parents=True)
+        (model_path / "inference.onnx").write_bytes(b"model")
+    return plugin_root
+
+
+def test_neoengine_is_the_default_paddle_manifest_with_provenance():
+    manifest = runtime.load_umiocr_manifest("paddle")
+
+    assert runtime.DEFAULT_UMIOCR_MANIFEST.name == (
+        "umiocr-paddle-neoengine-v1.4.json"
+    )
+    assert manifest["plugin"]["source_url"] == (
+        "https://github.com/chapterv/umi-paddle-neoengine.git"
+    )
+    assert manifest["plugin"]["commit"] == (
+        "e1acb9d22a8b4f343cd0c6d18dec694d809d02e7"
+    )
+    assert manifest["plugin"]["version"] == "1.4"
+    assert manifest["backend"] == "onnxruntime"
+    assert any(
+        entry["path"].endswith("win_x64_PaddleOCR_Py/engine.py")
+        for entry in manifest["files"]
+    )
+
+
+def test_neoengine_environment_verifier_accepts_pinned_cpu_setup(
+    monkeypatch, tmp_path
+):
+    root = tmp_path
+    plugin_root = _neoengine_environment_root(root)
+    manifest = runtime.load_umiocr_manifest("paddle")
+    probe_output = (
+        '__OCR_FLOW_ENV__{"paddle":"3.2.1","paddleocr":"3.7.0",'
+        '"onnxruntime":"1.26.0",'
+        '"providers":["AzureExecutionProvider","CPUExecutionProvider"]}'
+    )
+
+    class Result:
+        returncode = 0
+        stdout = probe_output
+        stderr = ""
+
+    monkeypatch.setattr(
+        verify_umiocr_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    assert verify_umiocr_runtime.verify_plugin_environment(root, manifest) == []
+    assert plugin_root.is_dir()
+
+
+def test_neoengine_environment_verifier_fails_without_cpu_provider(
+    monkeypatch, tmp_path
+):
+    root = tmp_path
+    _neoengine_environment_root(root)
+    manifest = runtime.load_umiocr_manifest("paddle")
+    probe_output = (
+        '__OCR_FLOW_ENV__{"paddle":"3.2.1","paddleocr":"3.7.0",'
+        '"onnxruntime":"1.26.0","providers":["AzureExecutionProvider"]}'
+    )
+
+    class Result:
+        returncode = 0
+        stdout = probe_output
+        stderr = ""
+
+    monkeypatch.setattr(
+        verify_umiocr_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    failures = verify_umiocr_runtime.verify_plugin_environment(root, manifest)
+
+    assert failures == [
+        "ONNX Runtime has no CPUExecutionProvider: ['AzureExecutionProvider']"
+    ]
+
+
+def test_neoengine_environment_verifier_fails_when_model_cache_is_missing(
+    monkeypatch, tmp_path
+):
+    root = tmp_path
+    plugin_root = _neoengine_environment_root(root)
+    (
+        plugin_root
+        / "paddlex"
+        / "official_models"
+        / "PP-OCRv6_medium_rec_onnx"
+        / "inference.onnx"
+    ).unlink()
+    manifest = runtime.load_umiocr_manifest("paddle")
+    probe_output = (
+        '__OCR_FLOW_ENV__{"paddle":"3.2.1","paddleocr":"3.7.0",'
+        '"onnxruntime":"1.26.0","providers":["CPUExecutionProvider"]}'
+    )
+
+    class Result:
+        returncode = 0
+        stdout = probe_output
+        stderr = ""
+
+    monkeypatch.setattr(
+        verify_umiocr_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    failures = verify_umiocr_runtime.verify_plugin_environment(root, manifest)
+
+    assert failures == [
+        "Missing cached NeoEngine model: PP-OCRv6_medium_rec_onnx"
+    ]
+
+
+def test_legacy_paddle_manifest_remains_available():
+    assert runtime.LEGACY_UMIOCR_MANIFEST.name == "umiocr-paddle-v2.1.5.json"
+    assert runtime.LEGACY_UMIOCR_MANIFEST.is_file()
+    assert (
+        runtime.load_umiocr_manifest("paddle")["plugin"]["name"]
+        == "umi-paddle-neoengine"
+    )
+
+
+def test_neoengine_manifest_fails_closed_for_legacy_plugin_layout(tmp_path):
+    legacy_plugin = (
+        tmp_path
+        / "UmiOCR-data"
+        / "plugins"
+        / "win7_x64_PaddleOCR-json"
+    )
+    legacy_plugin.mkdir(parents=True)
+    (legacy_plugin / "PaddleOCR-json.exe").write_bytes(b"legacy")
+
+    failures = verify_umiocr_runtime.verify_runtime(
+        tmp_path,
+        runtime.load_umiocr_manifest("paddle"),
+    )
+
+    assert (
+        "Missing UmiOCR-data/plugins/win_x64_PaddleOCR_Py/__init__.py"
+        in failures
+    )
+
+
 def test_rapid_manifest_is_selectable_and_verifies_rapid_plugin_assets():
     """Rapid uses a distinct checked-in manifest rather than Paddle hashes."""
     manifest_path = runtime.umiocr_manifest_path("rapid")

@@ -53,7 +53,7 @@ CPU-only 机器的完整安装顺序、Rapid 下载、版本边界和本地验�
 | Git for Windows | [git-for-windows/git](https://github.com/git-for-windows/git) | clone 和版本控制。 |
 | uv | [astral-sh/uv](https://github.com/astral-sh/uv) | 安装锁定的 Python 与项目依赖。 |
 | CPython | [python/cpython](https://github.com/python/cpython) | 由 uv 管理；本项目固定 3.13.12。 |
-| Umi-OCR | [hiroi-sora/Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) 的 [v2.1.5 Release](https://github.com/hiroi-sora/Umi-OCR/releases/tag/v2.1.5) | 扫描 PDF 的本地 OCR。GPU 选择 `Umi-OCR_Paddle_v2.1.5.7z.exe`；CPU-only 选择 `Umi-OCR_Rapid_v2.1.5.7z.exe`。 |
+| Umi-OCR | [hiroi-sora/Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) 的 [v2.1.5 Release](https://github.com/hiroi-sora/Umi-OCR/releases/tag/v2.1.5)；Paddle plugin 使用 [chapterv/umi-paddle-neoengine](https://github.com/chapterv/umi-paddle-neoengine) 1.4 | 扫描 PDF 的本地 OCR。Paddle profile 运行 NeoEngine 的 ONNX CPU backend；CPU-only 的独立 Rapid profile 仍使用 `Umi-OCR_Rapid_v2.1.5.7z.exe`。 |
 | Ghostscript | [ArtifexSoftware/ghostpdl](https://github.com/ArtifexSoftware/ghostpdl)；[官方 Windows 下载页](https://ghostscript.com/releases/gsdnld.html) | 所有不翻译流程，以及带 `--compress` 的翻译流程。 |
 | BabelDOC | [funstory-ai/BabelDOC](https://github.com/funstory-ai/BabelDOC) | 翻译时由本仓库管理固定的 v0.6.3 / `28f784ca6b437dbba040bfd9c67110373cd0924b` runtime。 |
 | MinerU | [opendatalab/MinerU](https://github.com/opendatalab/MinerU)；[官方平台](https://mineru.net/) | 每次 `process` 的 Markdown 结构化转换与 token 来源。 |
@@ -135,16 +135,19 @@ uv run --locked --extra windows ocr-flow doctor
 处理扫描件时，先按硬件验证选定的 Umi-OCR 引擎。两条路径都需要 manifest 校验和
 可打开、页数匹配、可提取文字的 layered PDF；不能用一个引擎的成功替代另一个。
 
-### 有 GPU：Paddle
+### Paddle：NeoEngine ONNX CPU baseline
 
 从 [hiroi-sora/Umi-OCR v2.1.5 Release](https://github.com/hiroi-sora/Umi-OCR/releases/tag/v2.1.5)
-取得 `Umi-OCR_Paddle_v2.1.5.7z.exe`，在配置向导中保持或选择
-`engine = "paddle"`，然后验证：
+取得 `Umi-OCR_Paddle_v2.1.5.7z.exe`，并在其
+`UmiOCR-data/plugins/win_x64_PaddleOCR_Py` 安装
+[umi-paddle-neoengine](https://github.com/chapterv/umi-paddle-neoengine) 1.4。
+配置向导中保持或选择 `engine = "paddle"`，然后验证静态文件、插件依赖、
+ONNX `CPUExecutionProvider` 和模型缓存：
 
 ~~~powershell
 $umiRoot = "C:\Tools\Umi-OCR_Paddle_v2.1.5"
-uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path $umiRoot --engine paddle
-uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --input test_assets\test_page_scanned.pdf --output output\paddle-local-smoke\test_page_scanned.layered.pdf --umiocr "$umiRoot\Umi-OCR.exe" --engine paddle --lang en
+uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path $umiRoot --engine paddle --check-environment
+uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --input test_assets\test_page_scanned.pdf --output output\paddle-local-smoke\test_page_scanned.layered.pdf --umiocr "$umiRoot\Umi-OCR.exe" --engine paddle --lang en --report output\paddle-local-smoke\report.json
 ~~~
 
 ### CPU-only：Rapid

@@ -1,6 +1,7 @@
 """Tests for the credential-free local UMI OCR layered-PDF validator."""
 
 from importlib.util import module_from_spec, spec_from_file_location
+import json
 from pathlib import Path
 
 import fitz
@@ -43,3 +44,24 @@ def test_layered_pdf_validator_rejects_textless_output(tmp_path):
 
     with pytest.raises(RuntimeError, match="no extractable text layer"):
         validator.inspect_layered_pdf(source, layered)
+
+
+def test_layered_pdf_validator_writes_machine_readable_report(tmp_path):
+    report_path = tmp_path / "reports" / "validation.json"
+
+    validator._write_report(
+        report_path,
+        {
+            "runtime": "Umi-OCR Paddle NeoEngine",
+            "backend": "onnxruntime",
+            "pages": 1,
+            "text_characters": 12,
+        },
+    )
+
+    assert json.loads(report_path.read_text(encoding="utf-8")) == {
+        "runtime": "Umi-OCR Paddle NeoEngine",
+        "backend": "onnxruntime",
+        "pages": 1,
+        "text_characters": 12,
+    }

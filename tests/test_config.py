@@ -478,6 +478,17 @@ class TestConfigValidation:
             == "English"
         )
 
+    def test_paddle_language_mapping_keeps_document_model_paths(self):
+        """NeoEngine stays behind the existing Paddle document API contract."""
+        assert (
+            resolve_umiocr_language("paddle", document_language="en")
+            == "models/config_en.txt"
+        )
+        assert (
+            resolve_umiocr_language("paddle", document_language="zh")
+            == "models/config_chinese.txt"
+        )
+
 
 class TestInteractiveConfig:
     """Tests for configuration-wizard runtime selection behavior."""

@@ -1,0 +1,53 @@
+{
+  "runtime": "Umi-OCR Paddle NeoEngine",
+  "version": "2.1.5+neoengine-1.4",
+  "platform": "Windows",
+  "engine": "paddle",
+  "backend": "onnxruntime",
+  "plugin": {
+    "name": "umi-paddle-neoengine",
+    "version": "1.4",
+    "source_url": "https://github.com/chapterv/umi-paddle-neoengine.git",
+    "commit": "e1acb9d22a8b4f343cd0c6d18dec694d809d02e7",
+    "python": "3.12.10",
+    "dependencies": {
+      "paddlepaddle": "3.2.1",
+      "paddleocr": "3.7.0",
+      "onnxruntime": "1.26.0"
+    },
+    "models": [
+      "PP-OCRv6_medium_det_onnx",
+      "PP-OCRv6_medium_rec_onnx"
+    ]
+  },
+  "files": [
+    {"path": "Umi-OCR.exe", "bytes": 213504, "sha256": "330B87A5F4F72CE07B41B7BEC31246E80DA89E51B6847ECD6BB0A4AD8A8C4742"},
+    {"path": "UmiOCR-data/main.py", "bytes": 5856, "sha256": "125A27E2441FAE50590D234C2C48F9CCAD55744E3C8F49A59BE5BA6279868C36"},
+    {"path": "UmiOCR-data/about.json", "bytes": 4943, "sha256": "FDF6ED42AD9DAEDFF4D8923F4631835F15E4EB34322B9EFF1CFB196CF632EB5E"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/__init__.py", "bytes": 321, "sha256": "98AECA9C4286C67C834BD4B51C873D363E7324F511C8108CC166E004F1771619"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/BACKENDS.md", "bytes": 214, "sha256": "CCBDB31F6D438A13F040FDF040AF840F62E61BE497DB117CA2952986FB6C701C"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/download_formula_models.py", "bytes": 4022, "sha256": "050ACCA6F938EC318F55E06508904819996BE8AFF82813365B86CBB1DA0A06DF"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/download_table_models.py", "bytes": 3667, "sha256": "A327B247EDBBAFDDBEF7D57426E74E1E225EF14DBF297EA8B1BF98A24152409F"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/engine.py", "bytes": 63973, "sha256": "D4FB7A1C4D6D69DEA8099A6EA74E4B5F65BC9CBA66088FB794A7DB6B1C1C24E0"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/formula_structure.py", "bytes": 13166, "sha256": "DECAD49F61364C588500A1575764595CC31ACCC313129F34103A45BA4482EB7D"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/i18n.csv", "bytes": 3483, "sha256": "2CD3D5ABA20D33E73A4DFD706DB18E71A1FF26BE217B9E5171397C43641D1C5F"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/install_status.py", "bytes": 12630, "sha256": "B8C8465B71DD062A567A9081C54F6FA356E2804CDD6976E90B60EC069284875F"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/model_sources.py", "bytes": 1236, "sha256": "DC004F80EBEEF2ABAE93F785409C11E51B1F0EDAE346359CE366F76C4F1DF7B8"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/PPOCR_api.py", "bytes": 13940, "sha256": "E822BBAF187265FB61234D93F10095D33A4CB55545CD7E55692EAAF1A7D9D994"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/PPOCR_config.py", "bytes": 14138, "sha256": "581029464C96B198CB62109700E9E49649C3293C4371F6865E059F46CCA04DD2"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/PPOCR_umi.py", "bytes": 10432, "sha256": "E4993717DF91EE610326684E564A2A217B14927F3BA8782238FD3A747573329B"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/punctuation_recovery.py", "bytes": 15923, "sha256": "0E710D43429AEF0E2B6D5373127F95C655E84B4598A141E40A638CA436F1C94E"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/README.md", "bytes": 12614, "sha256": "ECED01BF126640656D87EC0467AFC9C4DEA5255AA8847F5ADF831836B6A051CB"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/requirements-table.txt", "bytes": 355, "sha256": "7C77DDC74515028705B0AD082A049838B4514D10FAC0197C8F85D0895E0D7C63"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/requirements.txt", "bytes": 1973, "sha256": "1A3051D1265E885AC555FDDE67DBD93ABBC9F5BA319588074883A027F24CED8C"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/run.cmd", "bytes": 2203, "sha256": "DDF5339DC98C0AEC80445F5BE3263E63DFD4BEA92EB36362363916589183A820"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/table_structure.py", "bytes": 7030, "sha256": "5BA7D7CEBD7ECA35B8A72BC08027AF003A92C7F1F0A0C0C98CDA368BE0A2AE80"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/models/config_chinese_cht.txt", "bytes": 69, "sha256": "AD74D3712B0E160BC6EC0DB0CEDC59E109ED7F91C4D54330D8814FB230301B15"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/models/config_chinese.txt", "bytes": 69, "sha256": "AD74D3712B0E160BC6EC0DB0CEDC59E109ED7F91C4D54330D8814FB230301B15"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/models/config_cyrillic.txt", "bytes": 69, "sha256": "AD74D3712B0E160BC6EC0DB0CEDC59E109ED7F91C4D54330D8814FB230301B15"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/models/config_en.txt", "bytes": 69, "sha256": "AD74D3712B0E160BC6EC0DB0CEDC59E109ED7F91C4D54330D8814FB230301B15"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/models/config_japan.txt", "bytes": 69, "sha256": "AD74D3712B0E160BC6EC0DB0CEDC59E109ED7F91C4D54330D8814FB230301B15"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/models/config_korean.txt", "bytes": 69, "sha256": "AD74D3712B0E160BC6EC0DB0CEDC59E109ED7F91C4D54330D8814FB230301B15"},
+    {"path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/models/configs.txt", "bytes": 184, "sha256": "FA0D60700F59BD6F10F0DAD2BB20E26A7B9E1A106CBB07BF1E3F79D136E2953C"}
+  ]
+}

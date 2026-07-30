@@ -12,7 +12,7 @@ CPU-only Rapid preparation.
 | Component | Responsibility | Owner and readiness |
 | --- | --- | --- |
 | coding-chong/frankensteined-pdf2md | Orchestrates a Conversion Run and persists recovery state. | checkout-root uv.lock; uv sync --locked --extra windows and uv run --locked --extra windows ocr-flow --help succeed. |
-| Umi-OCR engine | Produces a layered PDF for scanned source documents. | User-acquired Windows runtime; file manifest plus GET /api/doc/get_options prove the selected Paddle or Rapid contract. |
+| Umi-OCR engine | Produces a layered PDF for scanned source documents. | Project-local Umi-OCR v2.1.5 with the NeoEngine Paddle plugin (ONNX CPU) by default, or a separately acquired Rapid runtime; file manifest plus GET /api/doc/get_options prove the selected contract. |
 | BabelDOC Runtime Profile | Produces the optional bilingual Working Document. | Project-managed v0.6.3 runtime; cpu-safe is the CPU-only profile. |
 | Ghostscript | Compresses Conversion Segments as a system executable. | User-installed system executable; available through config path, PATH, or common Windows locations. |
 | MinerU | Performs Structural Conversion for each Conversion Segment. | User token and external service; success requires upload, polling, ZIP download, and extraction. |
@@ -46,13 +46,35 @@ The document-language mapping is owned once by ocr_flow.config:
 
 | Engine | --lang en | --lang zh | Manifest |
 | --- | --- | --- | --- |
-| paddle | models/config_en.txt | models/config_chinese.txt | umiocr-paddle-v2.1.5.json |
+| paddle | models/config_en.txt | models/config_chinese.txt | umiocr-paddle-neoengine-v1.4.json |
 | rapid | English | 简体中文 | umiocr-rapid-v2.1.5.json |
 
 Existing configurations that omit engine remain Paddle. When Rapid is selected,
 legacy English/Chinese Paddle defaults are translated to Rapid values. Custom
 language values are deliberately preserved and the running service must expose
 them through GET /api/doc/get_options before OCR uploads begin.
+
+### Project-local NeoEngine Paddle baseline
+
+The default Paddle profile is `chapterv/umi-paddle-neoengine` version 1.4 at
+commit `e1acb9d22a8b4f343cd0c6d18dec694d809d02e7`. It runs in the plugin-local
+Python 3.12 environment with `paddlepaddle==3.2.1`, `paddleocr==3.7.0`, and
+`onnxruntime==1.26.0`; `CPUExecutionProvider` is the supported baseline. The
+English PP-OCRv6 medium ONNX detection and recognition models must be present
+in the plugin's `paddlex/` cache before a run is considered ready.
+
+Verify both the immutable files and the dynamic environment before starting
+the host:
+
+~~~powershell
+uv run --locked --extra windows python scripts/verify_umiocr_runtime.py `
+  --path <umi-root> --engine paddle --check-environment
+~~~
+
+The previous `win7_x64_PaddleOCR-json` plugin and Umi settings remain in the
+operator's timestamped rollback copy. To restore it, stop the project-local
+Umi host, replace `UmiOCR-data/plugins/win_x64_PaddleOCR_Py` with the saved
+legacy directory, and restore `.settings`/`.pre_settings` before restarting.
 
 The local document boundary is:
 
@@ -73,13 +95,14 @@ Use both proof layers for a newly acquired runtime:
 
 ~~~powershell
 uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path <umi-root> --engine rapid
-uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --input test_assets\test_page_scanned.pdf --output output\rapid-local-smoke\result.pdf --umiocr <umi-root>\Umi-OCR.exe --engine rapid --lang en
+uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --input test_assets\test_page_scanned.pdf --output output\rapid-local-smoke\result.pdf --umiocr <umi-root>\Umi-OCR.exe --engine rapid --lang en --report output\rapid-local-smoke\report.json
 ~~~
 
-The second command is local only and must leave a readable PDF with matching
-page count and extractable text. It is stronger evidence than a manifest-only
-check, but a physically GPU-free Windows machine remains the final CPU-only
-portability gate.
+The layered-PDF command is local only and must leave a readable PDF with
+matching page count and extractable text. Pass `--report` to retain
+machine-readable runtime/plugin/backend evidence; this is stronger evidence
+than a manifest-only check. A physically GPU-free Windows machine remains the
+final CPU-only portability gate.
 
 ## BabelDOC and Ghostscript Contract
 

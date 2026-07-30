@@ -52,7 +52,7 @@ and documentation together.
 
 | Engine | English document value | Chinese document value | Manifest |
 | --- | --- | --- | --- |
-| paddle | models/config_en.txt | models/config_chinese.txt | umiocr-paddle-v2.1.5.json |
+| paddle | models/config_en.txt | models/config_chinese.txt | umiocr-paddle-neoengine-v1.4.json |
 | rapid | English | 简体中文 | umiocr-rapid-v2.1.5.json |
 
 GET /api/doc/get_options is the runtime truth. A file manifest proves that the
@@ -69,6 +69,27 @@ uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --
 
 The local output must have matching page count and extractable text. A mocked
 options response or a unit test never replaces the real layered-PDF result.
+
+The default Paddle manifest is the project-local `chapterv/umi-paddle-neoengine`
+plugin, version 1.4 at commit
+`e1acb9d22a8b4f343cd0c6d18dec694d809d02e7`, using ONNX Runtime CPU. Its dynamic
+readiness boundary is the plugin-local Python environment plus the cached
+`PP-OCRv6_medium_det_onnx` and `PP-OCRv6_medium_rec_onnx` models:
+
+~~~powershell
+uv run --locked --extra windows python scripts/verify_umiocr_runtime.py `
+  --path <umi-root> --engine paddle --check-environment
+uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py `
+  --input test_assets\true_scanned_test.pdf `
+  --output <local-output.pdf> --umiocr <umi-root>\Umi-OCR.exe `
+  --engine paddle --lang en --timeout 21600 --report <report.json>
+~~~
+
+The old `win7_x64_PaddleOCR-json` plugin is retained outside the active
+directory in the task's timestamped rollback artifact. Do not delete it while
+diagnosing a failed upgrade; restore it together with the saved Umi settings
+only when an explicit rollback is required. The paid MinerU/translation matrix
+is a separate gate and is not implied by this local OCR evidence.
 
 ## Fresh Clone and External Boundaries
 
