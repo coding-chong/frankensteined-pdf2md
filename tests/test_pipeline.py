@@ -17,7 +17,7 @@ import shutil
 from unittest.mock import patch, MagicMock, Mock
 from datetime import datetime
 
-from ocr_flow.pipeline import Pipeline
+from ocr_flow.pipeline import Pipeline, ScannedPdfHasTextLayerError
 from ocr_flow.config import Config
 from ocr_flow.state import State, StateManager
 from ocr_flow.steps.compress import CompressionValidation, PageTextValidation
@@ -45,6 +45,12 @@ def test_assets_dir():
 def text_pdf(test_assets_dir):
     """Path to text PDF."""
     return test_assets_dir / "test_page_text.pdf"
+
+
+@pytest.fixture
+def scanned_pdf(test_assets_dir):
+    """Path to an image-only PDF for explicit scanned-mode tests."""
+    return test_assets_dir / "test_page_scanned.pdf"
 
 
 @pytest.fixture
@@ -353,7 +359,7 @@ class TestPipelineSteps:
         mock_split.assert_called()
 
     @patch('ocr_flow.steps.ocr.ocr_pdf')
-    def test_step_ocr_for_scanned(self, mock_ocr, mock_config, text_pdf, output_dir):
+    def test_step_ocr_for_scanned(self, mock_ocr, mock_config, scanned_pdf, output_dir):
         """Test OCR step for scanned PDF."""
         mock_ocr.return_value = output_dir / "ocr_result.pdf"
 
@@ -363,16 +369,16 @@ class TestPipelineSteps:
 
                 pipeline = Pipeline(config=mock_config)
                 try:
-                    pipeline.run(text_pdf, output_dir, pdf_type="scanned")
+                    pipeline.run(scanned_pdf, output_dir, pdf_type="scanned")
                 except:
                     pass
 
         # OCR should be attempted for scanned PDF
-        # (may not be called if exception happens before)
+        mock_ocr.assert_called_once()
 
     @patch('ocr_flow.steps.ocr.resolve_ocr_language')
     @patch('ocr_flow.steps.ocr.ocr_pdf')
-    def test_step_ocr_uses_document_language_and_timeout(self, mock_ocr, mock_resolve, mock_config, text_pdf, output_dir):
+    def test_step_ocr_uses_document_language_and_timeout(self, mock_ocr, mock_resolve, mock_config, scanned_pdf, output_dir):
         """Test scanned PDFs map document language to the OCR model and pass timeout overrides."""
         mock_resolve.return_value = "models/config_chinese.txt"
         mock_ocr.return_value = output_dir / "ocr_result.pdf"
@@ -384,7 +390,7 @@ class TestPipelineSteps:
                 pipeline = Pipeline(config=mock_config)
                 try:
                     pipeline.run(
-                        text_pdf,
+                        scanned_pdf,
                         output_dir,
                         pdf_type="scanned",
                         language="zh",
@@ -402,6 +408,24 @@ class TestPipelineSteps:
         assert mock_ocr.call_count == 1
         assert mock_ocr.call_args.kwargs["timeout"] == 1234
         assert mock_ocr.call_args.kwargs["ocr_language"] == "models/config_chinese.txt"
+
+    @patch('ocr_flow.steps.ocr.ocr_pdf')
+    def test_explicit_scanned_rejects_existing_text_layer(
+        self, mock_ocr, mock_config, text_pdf, output_dir
+    ):
+        """Explicit scanned mode fails before Umi-OCR for text-bearing input."""
+        pipeline = Pipeline(config=mock_config)
+
+        with pytest.raises(ScannedPdfHasTextLayerError, match="--pdf-type text"):
+            pipeline.run(text_pdf, output_dir, pdf_type="scanned")
+
+        mock_ocr.assert_not_called()
+        state_path = next(output_dir.glob("*/*/.state.json"))
+        state = State.load(state_path)
+        assert state is not None
+        ocr_step = state.get_step_status("ocr")
+        assert ocr_step.status == "failed"
+        assert "preprocess" in (ocr_step.error or "")
 
     def test_step_ocr_skipped_for_text(self, mock_config, text_pdf, output_dir):
         """Test that OCR is skipped for text PDF."""

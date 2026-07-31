@@ -42,6 +42,12 @@ other.
 | Complex matrix orchestration | scripts/run_live_complex_pdf_matrix.py and tests/live_complex_pdf_matrix.py | tests/test_complex_pdf_assets.py and tests/test_live_matrix_validation.py |
 | Human onboarding content | README.md and docs/fresh-clone-setup.md | Markdown link and command/reference checks |
 
+`ocr_flow/pipeline.py` owns the explicit scanned-mode input guard. Before a
+new Umi-OCR request, a text-bearing PDF fails closed with guidance to use
+`--pdf-type text` or explicit preprocessing; do not weaken this guard to
+silently overlay another OCR layer. The focused regression is
+`tests/test_pipeline.py::TestPipelineSteps::test_explicit_scanned_rejects_existing_text_layer`.
+
 ## Umi-OCR Contract
 
 UmiOcrConfig has an explicit engine. Only paddle and rapid are supported.

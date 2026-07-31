@@ -153,6 +153,13 @@ splitting. Translation creates an alternating dual PDF; non-translated runs
 skip that stage. State records each completion or skip decision so recovery can
 avoid resubmitting completed MinerU parts.
 
+When `--pdf-type scanned` is selected explicitly, the pipeline first checks that
+the input has no extractable text layer. A text-bearing input fails before any
+Umi-OCR service startup or upload, because Umi-OCR would add a second hidden
+layer and MinerU could ingest both representations. Use `--pdf-type text` for
+an existing text layer, or explicitly preprocess the PDF before requesting
+scanned OCR. Auto-detected inputs keep the normal text-versus-scanned choice.
+
 The BabelDOC command receives the real in-memory translation key, but coding-chong/frankensteined-pdf2md
 redacts it from console output, log files, subprocess error excerpts, matrix
 progress, and retained reports.

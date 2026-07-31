@@ -11,7 +11,7 @@ import logging
 
 from .config import Config
 from .state import StateManager
-from .steps.split import split_pdf
+from .steps.split import has_text_layer, split_pdf
 from .steps.compress import compress_pdf, validate_compressed_pdf
 from .steps.mineru import MinerUClient
 from .steps.format_fix import format_fix
@@ -21,6 +21,10 @@ from .utils.graceful_exit import GracefulExitContext
 
 class AllMinerUSegmentsFailedError(RuntimeError):
     """Raised when MinerU does not produce Markdown for any requested segment."""
+
+
+class ScannedPdfHasTextLayerError(RuntimeError):
+    """Raised when explicit scanned OCR would duplicate an existing text layer."""
 
 
 class Pipeline:
@@ -255,6 +259,18 @@ class Pipeline:
                     if recovery_mode and ocr_step.status == "completed" and ocr_step.output and Path(ocr_step.output).exists():
                         current_pdf = Path(ocr_step.output)
                     else:
+                        if has_text_layer(input_pdf):
+                            message = (
+                                "Explicit scanned mode requires an input PDF without an "
+                                "extractable text layer. Use --pdf-type text or "
+                                "preprocess the PDF explicitly before OCR."
+                            )
+                            state.update_step("ocr", status="failed", error=message)
+                            self.state_manager.save()
+                            if self.logger:
+                                self.logger.error(message)
+                            raise ScannedPdfHasTextLayerError(message)
+
                         msg = "[1/7] OCR processing"
                         self.logger.info(msg)
                         if self.verbose:
@@ -557,6 +573,9 @@ class Pipeline:
                 raise
             except AllMinerUSegmentsFailedError:
                 # The partial MinerU state was saved before raising for recovery.
+                raise
+            except ScannedPdfHasTextLayerError:
+                # The OCR guard persisted an actionable failure before raising.
                 raise
             except Exception as e:
                 state.update_step(state.current_step or "unknown", status="failed", error=str(e))
