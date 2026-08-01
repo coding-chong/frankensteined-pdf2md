@@ -18,7 +18,16 @@
     "models": [
       "PP-OCRv6_medium_det_onnx",
       "PP-OCRv6_medium_rec_onnx"
-    ]
+    ],
+    "install_status": {
+      "path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/install_status.json",
+      "required_status": "complete",
+      "required_models": "ready",
+      "backends": {
+        "cpu": "onnxruntime",
+        "gpu": "onnxruntime-gpu"
+      }
+    }
   },
   "files": [
     {"path": "Umi-OCR.exe", "bytes": 213504, "sha256": "330B87A5F4F72CE07B41B7BEC31246E80DA89E51B6847ECD6BB0A4AD8A8C4742"},

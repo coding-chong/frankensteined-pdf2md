@@ -384,6 +384,12 @@ def start_umi_ocr(config=None) -> Dict[str, Any]:
 
     try:
         command, cwd = resolve_umi_launch_command(umi_path)
+        environment = os.environ.copy()
+        # The bundled host and plugin use their own Python installations.
+        # Inheriting uv's interpreter roots mixes stdlibs and can fail with an
+        # SRE module mismatch before the OCR engine starts.
+        environment.pop('PYTHONHOME', None)
+        environment.pop('PYTHONPATH', None)
 
         # Start UMI OCR in background
         if os.name == 'nt':
@@ -391,6 +397,7 @@ def start_umi_ocr(config=None) -> Dict[str, Any]:
             subprocess.Popen(
                 command,
                 cwd=cwd,
+                env=environment,
                 creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
@@ -399,6 +406,7 @@ def start_umi_ocr(config=None) -> Dict[str, Any]:
             subprocess.Popen(
                 command,
                 cwd=cwd,
+                env=environment,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True

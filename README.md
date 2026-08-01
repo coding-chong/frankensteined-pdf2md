@@ -53,7 +53,7 @@ CPU-only 机器的完整安装顺序、Rapid 下载、版本边界和本地验�
 | Git for Windows | [git-for-windows/git](https://github.com/git-for-windows/git) | clone 和版本控制。 |
 | uv | [astral-sh/uv](https://github.com/astral-sh/uv) | 安装锁定的 Python 与项目依赖。 |
 | CPython | [python/cpython](https://github.com/python/cpython) | 由 uv 管理；本项目固定 3.13.12。 |
-| Umi-OCR | [hiroi-sora/Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) 的 [v2.1.5 Release](https://github.com/hiroi-sora/Umi-OCR/releases/tag/v2.1.5)；Paddle plugin 使用 [chapterv/umi-paddle-neoengine](https://github.com/chapterv/umi-paddle-neoengine) 1.4 | 扫描 PDF 的本地 OCR。Paddle profile 运行 NeoEngine 的 ONNX CPU backend；CPU-only 的独立 Rapid profile 仍使用 `Umi-OCR_Rapid_v2.1.5.7z.exe`。 |
+| Umi-OCR | [hiroi-sora/Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) 的 [v2.1.5 Release](https://github.com/hiroi-sora/Umi-OCR/releases/tag/v2.1.5)；Paddle plugin 使用 [chapterv/umi-paddle-neoengine](https://github.com/chapterv/umi-paddle-neoengine) 1.4 | 扫描 PDF 的本地 OCR。默认 Paddle OCR V6 profile 使用 plugin-local Python 3.12.10、PaddlePaddle 3.2.1、PaddleOCR 3.7.0 和 ONNX Runtime 1.26.0 的 CPU backend；Rapid 是独立可选引擎。 |
 | Ghostscript | [ArtifexSoftware/ghostpdl](https://github.com/ArtifexSoftware/ghostpdl)；[官方 Windows 下载页](https://ghostscript.com/releases/gsdnld.html) | 所有不翻译流程，以及带 `--compress` 的翻译流程。 |
 | BabelDOC | [funstory-ai/BabelDOC](https://github.com/funstory-ai/BabelDOC) | 翻译时由本仓库管理固定的 v0.6.3 / `28f784ca6b437dbba040bfd9c67110373cd0924b` runtime。 |
 | MinerU | [opendatalab/MinerU](https://github.com/opendatalab/MinerU)；[官方平台](https://mineru.net/) | 每次 `process` 的 Markdown 结构化转换与 token 来源。 |
@@ -79,8 +79,8 @@ uv run --locked --extra windows ocr-flow config
 | `BabelDOC Git checkout (leave empty for managed runtime)` | 普通用户直接按 Enter。不要 clone BabelDOC，也不要填写路径。 |
 | `BabelDOC primary font family` | 直接按 Enter 保持 `auto`，除非你明确需要 serif、sans-serif 或 script。 |
 | `Ghostscript path` | 已安装且在 PATH 中时直接按 Enter；否则填写真实的 `gswin64c.exe` 路径。 |
-| `UMI OCR engine` | 有 GPU 的扫描 OCR 选 `paddle`；CPU-only 扫描 OCR 选 `rapid`。 |
-| `UMI OCR exe path` | 已在 PATH/默认目录可发现时直接按 Enter；否则填写所选 `Umi-OCR.exe` 的绝对路径。 |
+| `UMI OCR engine` | 默认选 `paddle`，它以 ONNX CPU 运行 OCR V6；只有明确需要独立 Rapid runtime 时才选 `rapid`。GPU 是 Paddle 的显式可选加速验证，不是默认。 |
+| `UMI OCR exe path` | 填写已通过下述完整校验的 `Umi-OCR.exe` 绝对路径。仅路径存在或能返回 Paddle language options，不能证明它已安装 OCR V6 plugin。 |
 
 此表与向导的实际提问顺序一致。配置完成后再决定是否安装翻译 runtime、验证扫描 OCR
 或直接处理 PDF。
@@ -141,14 +141,26 @@ uv run --locked --extra windows ocr-flow doctor
 取得 `Umi-OCR_Paddle_v2.1.5.7z.exe`，并在其
 `UmiOCR-data/plugins/win_x64_PaddleOCR_Py` 安装
 [umi-paddle-neoengine](https://github.com/chapterv/umi-paddle-neoengine) 1.4。
-配置向导中保持或选择 `engine = "paddle"`，然后验证静态文件、插件依赖、
-ONNX `CPUExecutionProvider` 和模型缓存：
+固定 commit 为 `e1acb9d22a8b4f343cd0c6d18dec694d809d02e7`，plugin-local 环境必须是
+Python 3.12.10、PaddlePaddle 3.2.1、PaddleOCR 3.7.0 和 ONNX Runtime 1.26.0，
+并缓存 `PP-OCRv6_medium_det_onnx` 与 `PP-OCRv6_medium_rec_onnx`。配置向导中
+保持或选择 `engine = "paddle"`，然后验证静态文件、全部依赖、ONNX
+`CPUExecutionProvider` 和两个 OCR V6 模型：
 
 ~~~powershell
 $umiRoot = "C:\Tools\Umi-OCR_Paddle_v2.1.5"
-uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path $umiRoot --engine paddle --check-environment
-uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --input test_assets\test_page_scanned.pdf --output output\paddle-local-smoke\test_page_scanned.layered.pdf --umiocr "$umiRoot\Umi-OCR.exe" --engine paddle --lang en --report output\paddle-local-smoke\report.json
+& "$umiRoot\UmiOCR-data\plugins\win_x64_PaddleOCR_Py\.venv\Scripts\python.exe" "$umiRoot\UmiOCR-data\plugins\win_x64_PaddleOCR_Py\install_status.py" check-env --env cpu --backend onnxruntime --models ready
+uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path $umiRoot --engine paddle --check-environment --provider-mode cpu
+uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --input test_assets\test_page_scanned.pdf --output output\paddle-local-smoke\test_page_scanned.layered.pdf --umiocr "$umiRoot\Umi-OCR.exe" --engine paddle --lang en --provider-mode cpu --report output\paddle-local-smoke\report.json
 ~~~
+
+第一条命令生成 Umi 主程序实际读取的 `install_status.json`。后续 verifier 仍会
+独立检查依赖版本、provider 与非空模型文件，所以状态值不能替代真实安装。
+
+GPU 仅是显式可选加速：使用独立 `.venv_gpu` 并把两条命令的 provider 改为
+`--provider-mode gpu`。只有校验器看到 `CUDAExecutionProvider`、GPU device，且真实
+Umi 引擎日志明确报告 `backend=gpu(onnx-cuda) device=gpu` 且无 CPU fallback，才可
+记为 GPU 成功；否则继续使用上述 CPU 默认路径。
 
 ### CPU-only：Rapid
 

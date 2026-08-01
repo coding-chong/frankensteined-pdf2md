@@ -13,11 +13,13 @@ api_token = ""
 [umiocr]
 enabled = true
 url = "http://127.0.0.1:1224"
-# GPU/default engine: paddle with Paddle model-path language values.
-# CPU-only engine: rapid with language = "English" or "简体中文".
+# Default OCR V6 engine: Paddle NeoEngine with ONNX CPU and model-path languages.
+# Rapid is an independent opt-in engine with language = "English" or "简体中文".
+# Paddle GPU acceleration requires separate explicit provider/log validation.
 engine = "paddle"
 language = "models/config_en.txt"
-# Leave empty for auto-discovery, or set an absolute Umi-OCR.exe path.
+# Set an absolute Umi-OCR.exe path that passes the manifest, environment, and
+# layered-PDF validators. File existence alone does not prove OCR V6 readiness.
 exe_path = ""
 
 [babeldoc]

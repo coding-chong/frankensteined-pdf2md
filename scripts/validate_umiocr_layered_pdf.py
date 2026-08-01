@@ -70,9 +70,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--provider-mode",
         choices=("cpu", "gpu"),
-        help="Also verify the plugin provider environment before OCR",
+        help=(
+            "Paddle provider contract; defaults to cpu for Paddle and is not "
+            "valid for Rapid"
+        ),
     )
     return parser.parse_args()
+
+
+def resolve_provider_mode(engine: str, requested: Optional[str]) -> Optional[str]:
+    """Apply the Paddle CPU baseline without leaking it into Rapid."""
+    if engine == "rapid":
+        if requested is not None:
+            raise ValueError("--provider-mode is only valid with --engine paddle")
+        return None
+    return requested or "cpu"
 
 
 def _verify_runtime(
@@ -236,7 +248,11 @@ def main() -> int:
     from ocr_flow.config import Config, resolve_umiocr_language
     from ocr_flow.steps.ocr import ocr_pdf
 
-    environment = _verify_runtime(executable, args.engine, args.provider_mode)
+    try:
+        provider_mode = resolve_provider_mode(args.engine, args.provider_mode)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    environment = _verify_runtime(executable, args.engine, provider_mode)
     config = Config()
     config.umiocr.engine = args.engine
     config.umiocr.language = resolve_umiocr_language(
@@ -286,7 +302,7 @@ def main() -> int:
                 "backend": (
                     manifest.get("backend") if isinstance(manifest, dict) else None
                 ),
-                "provider_mode": args.provider_mode,
+                "provider_mode": provider_mode,
                 "environment": environment,
                 "plugin": plugin,
                 **result,

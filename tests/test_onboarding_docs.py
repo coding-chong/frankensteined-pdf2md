@@ -66,6 +66,50 @@ def test_readme_distinguishes_umiocr_engines_and_names_upstreams():
     assert "扫描件必须使用 Rapid" not in readme
 
 
+def test_maintained_docs_share_the_paddle_ocr_v6_cpu_contract():
+    documents = {
+        path: _read(path)
+        for path in (
+            "README.md",
+            "docs/fresh-clone-setup.md",
+            "docs/runtime-pipeline.md",
+            "docs/ai-maintenance-guide.md",
+        )
+    }
+    required = (
+        "e1acb9d22a8b4f343cd0c6d18dec694d809d02e7",
+        "3.12.10",
+        "3.2.1",
+        "3.7.0",
+        "1.26.0",
+        "PP-OCRv6_medium_det_onnx",
+        "PP-OCRv6_medium_rec_onnx",
+        "--provider-mode cpu",
+        "--provider-mode gpu",
+        "install_status.py",
+        "install_status.json",
+        "CPU",
+    )
+
+    for path, document in documents.items():
+        for value in required:
+            assert value in document, f"{path} is missing {value}"
+
+    config = _read("config.example.toml")
+    assert "Default OCR V6 engine" in config
+    assert "Paddle GPU acceleration requires separate explicit" in config
+    assert "GPU/default engine" not in config
+    assert "有 GPU 的扫描 OCR 选 `paddle`" not in documents["README.md"]
+    for path in (
+        "docs/fresh-clone-setup.md",
+        "docs/runtime-pipeline.md",
+        "docs/ai-maintenance-guide.md",
+    ):
+        assert "PYTHONHOME" in documents[path]
+        assert "PYTHONPATH" in documents[path]
+        assert "SRE module mismatch" in documents[path]
+
+
 def test_readme_translation_row_names_actual_dependencies():
     readme = _read("README.md")
     translation_row = next(

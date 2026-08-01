@@ -542,6 +542,25 @@ class TestStartUmiOcr:
         mock_popen.assert_called_once()
 
     @patch('subprocess.Popen')
+    def test_start_removes_caller_python_roots(self, mock_popen, monkeypatch):
+        """Do not leak the project's uv interpreter into bundled Umi Python."""
+        monkeypatch.setattr(
+            'ocr_flow.self_check.find_umi_ocr',
+            lambda config=None: '/path/to/umi-ocr',
+        )
+        monkeypatch.setenv('PYTHONHOME', 'C:/project-python')
+        monkeypatch.setenv('PYTHONPATH', 'C:/project-site-packages')
+        monkeypatch.setenv('OCR_FLOW_PRESERVED', 'yes')
+
+        result = start_umi_ocr()
+
+        assert result['started'] is True
+        environment = mock_popen.call_args.kwargs['env']
+        assert 'PYTHONHOME' not in environment
+        assert 'PYTHONPATH' not in environment
+        assert environment['OCR_FLOW_PRESERVED'] == 'yes'
+
+    @patch('subprocess.Popen')
     def test_start_exception(self, mock_popen, monkeypatch):
         """Test handling exception during start."""
         monkeypatch.setattr('ocr_flow.self_check.find_umi_ocr', lambda config=None: '/path/to/umi-ocr')

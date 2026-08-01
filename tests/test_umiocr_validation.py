@@ -131,3 +131,14 @@ def test_layered_pdf_validator_rejects_missing_chinese_anchor(tmp_path):
                 expected_anchors=["\u4e2d\u6587\u951a\u70b9"],
                 min_chinese_characters=0,
             )
+
+
+def test_paddle_layered_validation_defaults_to_cpu_provider():
+    assert validator.resolve_provider_mode("paddle", None) == "cpu"
+    assert validator.resolve_provider_mode("paddle", "gpu") == "gpu"
+
+
+def test_rapid_layered_validation_does_not_inherit_paddle_provider():
+    assert validator.resolve_provider_mode("rapid", None) is None
+    with pytest.raises(ValueError, match="only valid with --engine paddle"):
+        validator.resolve_provider_mode("rapid", "cpu")

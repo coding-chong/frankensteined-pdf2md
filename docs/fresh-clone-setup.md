@@ -47,7 +47,7 @@ uv run --locked --extra windows ocr-flow --help
 | 锁定 Python 包 | 所有工作流 | 仓库内 uv.lock；Windows extra 包含 pythonnet 3.0.5。 | checkout 下 .venv，已被 Git 忽略 | uv lock --check 和 uv sync --locked --extra windows --dry-run | 删除本地 .venv 后重新执行 uv sync --locked；不要手工 uv pip install 覆盖锁。 |
 | pythonnet 和 .NET | Windows MinerU ZIP 回退链 | pythonnet 3.0.5 由 windows extra 锁定；已验证 .NET Desktop Runtime 8.0.3。 | Python 环境和 Windows .NET 运行时 | uv run --locked --extra windows python -c "import clr; from System.Net import WebClient; print('pythonnet/.NET ready')" | 仅当该命令失败时安装 Microsoft x64 .NET Desktop Runtime LTS，重开终端后重跑。 |
 | Ghostscript | 所有不翻译流程；显式 `--compress` 的翻译流程；完整矩阵 | 从 Artifex Ghostscript 官方下载页获取 Windows x64。当前发现基线 10.03.0；10.07.1 曾通过真实压缩兼容性验证。 | PATH，或 config 的 compress.ghostscript_path | uv run --locked --extra windows ocr-flow doctor | 提供真实 gswin64c.exe 的绝对路径；下载或签名成功不等于兼容，须做后述压缩 smoke。 |
-| Umi-OCR Paddle + NeoEngine | 默认 Paddle 扫描 OCR | Umi-OCR v2.1.5 配合 `chapterv/umi-paddle-neoengine` 1.4；固定 commit 由 `umiocr-paddle-neoengine-v1.4.json` 记录，插件依赖为 PaddlePaddle 3.2.1、PaddleOCR 3.7.0、ONNX Runtime 1.26.0。 | `UmiOCR-data/plugins/win_x64_PaddleOCR_Py` 的 plugin-local `.venv` 与 `paddlex/` model cache | `verify_umiocr_runtime.py --engine paddle --check-environment`，随后运行 layered-PDF validator | 保留旧 `win7_x64_PaddleOCR-json` plugin 和 Umi settings 的 rollback copy；不要用全局 Python 覆盖 plugin-local environment。 |
+| Umi-OCR Paddle + NeoEngine | 默认 Paddle OCR V6 扫描 OCR | Umi-OCR v2.1.5 配合 `chapterv/umi-paddle-neoengine` 1.4，固定 commit `e1acb9d22a8b4f343cd0c6d18dec694d809d02e7`；plugin-local Python 3.12.10、PaddlePaddle 3.2.1、PaddleOCR 3.7.0、ONNX Runtime 1.26.0。 | `UmiOCR-data/plugins/win_x64_PaddleOCR_Py` 的 `.venv`，以及 `PP-OCRv6_medium_det_onnx` 与 `PP-OCRv6_medium_rec_onnx` model cache | `verify_umiocr_runtime.py --engine paddle --check-environment --provider-mode cpu`，随后运行带同一 provider 的 layered-PDF validator | 保留旧 `win7_x64_PaddleOCR-json` plugin 和 Umi settings 的 rollback copy；不要用全局 Python 覆盖 plugin-local environment。 |
 | Umi-OCR Rapid | 扫描 PDF、CPU-only 路径、CPU/Rapid 矩阵 | 官方 GitHub release v2.1.5 的 Umi-OCR_Rapid_v2.1.5.7z.exe；不要下载 Paddle 包来代替 Rapid。 | 用户选定目录，例如 C:\Tools\Umi-OCR_Rapid_v2.1.5；config 的 umiocr.exe_path | verify_umiocr_runtime.py 加 --engine rapid，随后运行本地 layered-PDF smoke | 重新从官方 release 解压到新目录；不要提交 vendor binary；若 options 显示 Paddle model 路径，先关闭错误服务再启动 Rapid。 |
 | BabelDOC | 仅翻译 | 项目自动管理 v0.6.3，提交 28f784ca6b437dbba040bfd9c67110373cd0924b | checkout/.ocr-flow-runtime/BabelDOC，已被 Git 忽略 | runtime setup --profile cpu-safe，随后 runtime smoke | 运行 setup 重新创建项目托管目录。不要对自己的 checkout 运行 runtime setup --path，除非接受其破坏性清理。 |
 | MinerU token | 每个 process 和 live matrix；即使不翻译也需要 | 用户在 MinerU 账户中创建 token；服务版本不由 Python lock 控制 | 用户配置文件 %USERPROFILE%\.ocr-flow\config.toml 或 process 的 --config 文件 | ocr-flow doctor 只检查已配置，不提交请求 | 检查账户、额度和网络；不要把 token 放进仓库、日志或 issue。 |
@@ -57,18 +57,28 @@ uv run --locked --extra windows ocr-flow --help
 PySocks 不在表中，也不是项目依赖：代码没有导入它，uv.lock 也没有锁定它。
 不要为了本项目额外安装 PySocks。
 
-## 3. 用户配置和 Rapid CPU-only 选择
+## 3. 用户配置与 Umi-OCR 引擎选择
 
-运行一次向导会在用户目录创建默认配置。doctor 不接受 --config，因此 Rapid
-的普通开发/诊断配置应保存在这个默认位置：
+运行一次向导会在用户目录创建默认配置。doctor 不接受 --config，因此普通开发和
+诊断配置应保存在这个默认位置：
 
 ~~~powershell
 uv run --locked --extra windows ocr-flow config
 ~~~
 
-向导中选择 Rapid，并填写 Umi-OCR.exe 的绝对路径、MinerU token、翻译 key
-和可选 Ghostscript 路径。Rapid 相关段的最终形状应类似下面这样；密钥不要写入
-示例文件或 Git：
+默认选择 Paddle，并填写已通过完整 OCR V6 校验的 Umi-OCR.exe 绝对路径、MinerU
+token、翻译 key 和可选 Ghostscript 路径。仅检查路径存在不能排除旧插件。默认
+Paddle CPU 段应类似下面这样；密钥不要写入示例文件或 Git：
+
+~~~toml
+[umiocr]
+engine = "paddle"
+url = "http://127.0.0.1:1224"
+language = "models/config_en.txt"
+exe_path = "C:/Tools/Umi-OCR_Paddle_v2.1.5/Umi-OCR.exe"
+~~~
+
+Rapid 是独立可选引擎；选择它时必须同时切换 engine、language 和 executable：
 
 ~~~toml
 [umiocr]
@@ -82,7 +92,8 @@ ghostscript_path = "C:/Program Files/gs/gs10.07.1/bin/gswin64c.exe"
 quality = "ebook"
 ~~~
 
-engine 缺失时保留旧配置的 paddle 行为。Rapid 的文档 API 接受 English 和
+engine 缺失时保留旧配置的 paddle 行为。Paddle 默认使用 ONNX CPU；GPU 需要
+独立 `.venv_gpu` 和显式 provider/真实日志验证，不能只改配置名称。Rapid 的文档 API 接受 English 和
 简体中文；Paddle 的 models/config_en.txt 和 models/config_chinese.txt 不能
 当作 Rapid 值。process 的 --lang en 或 --lang zh 会按 engine 映射，doctor
 和 OCR 上传前都会读取 GET /api/doc/get_options，拒绝运行中服务与配置不匹配的
@@ -98,8 +109,30 @@ uv run --locked --extra windows --extra dev pytest tests/test_complex_pdf_assets
 uv run --locked --extra windows python scripts/generate_complex_pdf_scan.py --verify
 ~~~
 
-Rapid 必须同时通过文件指纹和真实本地 document OCR。以下命令没有 MinerU 或
-翻译调用；它会在需要时启动本地 Umi-OCR，并产出可人工打开的 layered PDF：
+Paddle OCR V6 必须同时通过文件指纹、plugin-local Python 与依赖、CPU provider、
+两个模型缓存和真实本地 document OCR。以下命令没有 MinerU 或翻译调用：
+
+~~~powershell
+$umiRoot = "C:\Tools\Umi-OCR_Paddle_v2.1.5"
+& "$umiRoot\UmiOCR-data\plugins\win_x64_PaddleOCR_Py\.venv\Scripts\python.exe" "$umiRoot\UmiOCR-data\plugins\win_x64_PaddleOCR_Py\install_status.py" check-env --env cpu --backend onnxruntime --models ready
+uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path $umiRoot --engine paddle --check-environment --provider-mode cpu
+uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --input test_assets\test_page_scanned.pdf --output output\paddle-local-smoke\test_page_scanned.layered.pdf --umiocr "$umiRoot\Umi-OCR.exe" --engine paddle --lang en --provider-mode cpu --report output\paddle-local-smoke\report.json
+uv run --locked --extra windows ocr-flow doctor --ocr --start-ocr
+~~~
+
+`install_status.py` 生成 Umi 启动入口读取的 `install_status.json`；缺少它时，即使
+直接 import 依赖成功，Umi 仍会拒绝初始化。verifier 会再独立核对版本、provider
+和实际模型文件，不能用手工状态记录替代完整安装。
+
+必须从 checkout 根目录运行上述 `uv run` 命令。ocr-flow 启动 Umi 时会移除调用方
+的 `PYTHONHOME` 与 `PYTHONPATH`，避免项目 Python 3.13 污染 plugin Python 3.12.10。
+若日志出现 `SRE module mismatch`，说明启动链仍继承了错误解释器根目录；不要重装
+模型或降低验证要求，应先修复环境隔离并重新启动 Umi。
+
+GPU 仅在上述两条验证命令改为 `--provider-mode gpu`，且真实 Umi 日志明确报告
+`backend=gpu(onnx-cuda) device=gpu` 且无 CPU fallback 时成立。否则使用 CPU 默认。
+
+Rapid 也必须同时通过文件指纹和真实本地 document OCR：
 
 ~~~powershell
 $umiRoot = "C:\Tools\Umi-OCR_Rapid_v2.1.5"
@@ -272,8 +305,8 @@ live-matrix-report.json、live-progress.log 和 visual_review contact sheets。
 
 ## 8. 干净 clone 复查
 
-在另一目录重新 clone 后，重复第 1、4 节中的 uv install、lock、fixture、
-Rapid manifest 和 layered-PDF 命令。不要复制 .venv、umiocr_local、
+在另一目录重新 clone 后，重复第 1、4 节中的 uv install、lock、fixture，以及
+所选 Umi-OCR 引擎的 manifest/environment/layered-PDF 命令。不要复制 .venv、umiocr_local、
 .ocr-flow-runtime、output、API_KEYS.md 或用户 config。它们都被 Git 忽略，
 并且复制会掩盖新机缺失的依赖。
 
@@ -283,6 +316,6 @@ Rapid manifest 和 layered-PDF 命令。不要复制 .venv、umiocr_local、
 git ls-files test_assets/4_gs_prepress_300dpi.pdf test_assets/4_gs_prepress_300dpi_scanned_300dpi.pdf test_assets/complex_pdf_matrix.json scripts/generate_complex_pdf_scan.py scripts/run_live_complex_pdf_matrix.py tests/live_complex_pdf_matrix.py tests/test_complex_pdf_assets.py tests/test_live_matrix_validation.py
 ~~~
 
-如果上述命令、Rapid local smoke 和 cpu-safe BabelDOC smoke 都成功，新机已具备
+如果上述命令、所选 Umi-OCR local smoke 和 cpu-safe BabelDOC smoke 都成功，新机已具备
 不使用 GPU 的离线/本地准备条件。MinerU、翻译和完整四 case 矩阵仍由各自账户、
 网络和额度决定，必须把它们作为独立的远端验证门。

@@ -179,6 +179,28 @@ def _neoengine_environment_root(tmp_path, environment_name=".venv"):
         model_path = plugin_root / "paddlex" / "official_models" / model
         model_path.mkdir(parents=True)
         (model_path / "inference.onnx").write_bytes(b"model")
+    provider_mode = "gpu" if environment_name == ".venv_gpu" else "cpu"
+    backend = "onnxruntime-gpu" if provider_mode == "gpu" else "onnxruntime"
+    (plugin_root / "install_status.json").write_text(
+        json.dumps(
+            {
+                "envs": {
+                    provider_mode: {
+                        "status": "complete",
+                        "backend": backend,
+                        "python_version": "3.12.10",
+                        "models": "ready",
+                        "imports": {
+                            "paddle": True,
+                            "paddleocr": True,
+                            "onnxruntime": True,
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     return plugin_root
 
 
@@ -195,6 +217,18 @@ def test_neoengine_is_the_default_paddle_manifest_with_provenance():
         "e1acb9d22a8b4f343cd0c6d18dec694d809d02e7"
     )
     assert manifest["plugin"]["version"] == "1.4"
+    assert manifest["plugin"]["python"] == "3.12.10"
+    assert manifest["plugin"]["install_status"] == {
+        "path": (
+            "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/install_status.json"
+        ),
+        "required_status": "complete",
+        "required_models": "ready",
+        "backends": {
+            "cpu": "onnxruntime",
+            "gpu": "onnxruntime-gpu",
+        },
+    }
     assert manifest["backend"] == "onnxruntime"
     assert any(
         entry["path"].endswith("win_x64_PaddleOCR_Py/engine.py")
@@ -209,7 +243,8 @@ def test_neoengine_environment_verifier_accepts_pinned_cpu_setup(
     plugin_root = _neoengine_environment_root(root)
     manifest = runtime.load_umiocr_manifest("paddle")
     probe_output = (
-        '__OCR_FLOW_ENV__{"paddle":"3.2.1","paddleocr":"3.7.0",'
+        '__OCR_FLOW_ENV__{"python_version":"3.12.10",'
+        '"paddle":"3.2.1","paddleocr":"3.7.0",'
         '"onnxruntime":"1.26.0",'
         '"providers":["AzureExecutionProvider","CPUExecutionProvider"]}'
     )
@@ -229,6 +264,117 @@ def test_neoengine_environment_verifier_accepts_pinned_cpu_setup(
     assert plugin_root.is_dir()
 
 
+def test_neoengine_environment_verifier_rejects_python_version_drift(
+    monkeypatch, tmp_path
+):
+    _neoengine_environment_root(tmp_path)
+    manifest = runtime.load_umiocr_manifest("paddle")
+
+    class Result:
+        returncode = 0
+        stdout = (
+            '__OCR_FLOW_ENV__{"python_version":"3.12.9",'
+            '"paddle":"3.2.1","paddleocr":"3.7.0",'
+            '"onnxruntime":"1.26.0","providers":["CPUExecutionProvider"]}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        verify_umiocr_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    failures = verify_umiocr_runtime.verify_plugin_environment(tmp_path, manifest)
+
+    assert failures == [
+        "python version mismatch: expected 3.12.10, found 3.12.9"
+    ]
+
+
+def test_neoengine_environment_verifier_rejects_incomplete_manifest(tmp_path):
+    manifest = runtime.load_umiocr_manifest("paddle")
+    manifest["plugin"] = {
+        "python": "",
+        "dependencies": {},
+        "models": [],
+        "install_status": {},
+    }
+
+    failures = verify_umiocr_runtime.verify_plugin_environment(tmp_path, manifest)
+
+    assert failures == [
+        "NeoEngine manifest has no plugin.python version",
+        "NeoEngine manifest has no plugin.dependencies.paddlepaddle version",
+        "NeoEngine manifest has no plugin.dependencies.paddleocr version",
+        "NeoEngine manifest has no plugin.dependencies.onnxruntime version",
+        "NeoEngine manifest has no valid plugin.models list",
+        "NeoEngine manifest has no install-status path",
+        "NeoEngine manifest has no valid install-status backends",
+        "NeoEngine manifest has no install-status required_status value",
+        "NeoEngine manifest has no install-status required_models value",
+    ]
+
+
+def test_neoengine_environment_verifier_requires_umi_install_status(
+    monkeypatch, tmp_path
+):
+    plugin_root = _neoengine_environment_root(tmp_path)
+    (plugin_root / "install_status.json").unlink()
+    manifest = runtime.load_umiocr_manifest("paddle")
+
+    class Result:
+        returncode = 0
+        stdout = (
+            '__OCR_FLOW_ENV__{"python_version":"3.12.10",'
+            '"paddle":"3.2.1","paddleocr":"3.7.0",'
+            '"onnxruntime":"1.26.0","providers":["CPUExecutionProvider"]}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        verify_umiocr_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    failures = verify_umiocr_runtime.verify_plugin_environment(tmp_path, manifest)
+
+    assert failures == [
+        "NeoEngine install status is missing: "
+        "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/install_status.json; "
+        "run the plugin's install_status.py check-env command after "
+        "installing dependencies and models"
+    ]
+
+
+def test_neoengine_environment_verifier_rejects_malformed_install_status(
+    monkeypatch, tmp_path
+):
+    plugin_root = _neoengine_environment_root(tmp_path)
+    (plugin_root / "install_status.json").write_text("[]", encoding="utf-8")
+    manifest = runtime.load_umiocr_manifest("paddle")
+
+    class Result:
+        returncode = 0
+        stdout = (
+            '__OCR_FLOW_ENV__{"python_version":"3.12.10",'
+            '"paddle":"3.2.1","paddleocr":"3.7.0",'
+            '"onnxruntime":"1.26.0","providers":["CPUExecutionProvider"]}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        verify_umiocr_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    failures = verify_umiocr_runtime.verify_plugin_environment(tmp_path, manifest)
+
+    assert failures == ["NeoEngine install status must be a JSON object"]
+
+
 def test_neoengine_environment_verifier_fails_without_cpu_provider(
     monkeypatch, tmp_path
 ):
@@ -236,7 +382,8 @@ def test_neoengine_environment_verifier_fails_without_cpu_provider(
     _neoengine_environment_root(root)
     manifest = runtime.load_umiocr_manifest("paddle")
     probe_output = (
-        '__OCR_FLOW_ENV__{"paddle":"3.2.1","paddleocr":"3.7.0",'
+        '__OCR_FLOW_ENV__{"python_version":"3.12.10",'
+        '"paddle":"3.2.1","paddleocr":"3.7.0",'
         '"onnxruntime":"1.26.0","providers":["AzureExecutionProvider"]}'
     )
 
@@ -272,7 +419,8 @@ def test_neoengine_environment_verifier_fails_when_model_cache_is_missing(
     ).unlink()
     manifest = runtime.load_umiocr_manifest("paddle")
     probe_output = (
-        '__OCR_FLOW_ENV__{"paddle":"3.2.1","paddleocr":"3.7.0",'
+        '__OCR_FLOW_ENV__{"python_version":"3.12.10",'
+        '"paddle":"3.2.1","paddleocr":"3.7.0",'
         '"onnxruntime":"1.26.0","providers":["CPUExecutionProvider"]}'
     )
 
@@ -299,7 +447,8 @@ def test_neoengine_gpu_environment_requires_cuda_provider(monkeypatch, tmp_path)
     _neoengine_environment_root(root, ".venv_gpu")
     manifest = runtime.load_umiocr_manifest("paddle")
     probe_output = (
-        '__OCR_FLOW_ENV__{"python":"gpu-python","paddle":"3.2.1",'
+        '__OCR_FLOW_ENV__{"python":"gpu-python","python_version":"3.12.10",'
+        '"paddle":"3.2.1",'
         '"paddleocr":"3.7.0","onnxruntime":"1.26.0",'
         '"providers":["CUDAExecutionProvider","CPUExecutionProvider"],'
         '"device":"GPU"}'
@@ -333,7 +482,8 @@ def test_neoengine_gpu_environment_fails_closed_without_cuda_provider(
     _neoengine_environment_root(root, ".venv_gpu")
     manifest = runtime.load_umiocr_manifest("paddle")
     probe_output = (
-        '__OCR_FLOW_ENV__{"python":"gpu-python","paddle":"3.2.1",'
+        '__OCR_FLOW_ENV__{"python":"gpu-python","python_version":"3.12.10",'
+        '"paddle":"3.2.1",'
         '"paddleocr":"3.7.0","onnxruntime":"1.26.0",'
         '"providers":["CPUExecutionProvider"],"device":"CPU"}'
     )

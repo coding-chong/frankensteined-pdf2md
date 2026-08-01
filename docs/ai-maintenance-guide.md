@@ -79,17 +79,46 @@ options response or a unit test never replaces the real layered-PDF result.
 The default Paddle manifest is the project-local `chapterv/umi-paddle-neoengine`
 plugin, version 1.4 at commit
 `e1acb9d22a8b4f343cd0c6d18dec694d809d02e7`, using ONNX Runtime CPU. Its dynamic
-readiness boundary is the plugin-local Python environment plus the cached
+readiness boundary is plugin-local Python 3.12.10, PaddlePaddle 3.2.1,
+PaddleOCR 3.7.0, ONNX Runtime 1.26.0, `CPUExecutionProvider`, and the cached
 `PP-OCRv6_medium_det_onnx` and `PP-OCRv6_medium_rec_onnx` models:
 
 ~~~powershell
+& "<umi-root>\UmiOCR-data\plugins\win_x64_PaddleOCR_Py\.venv\Scripts\python.exe" `
+  "<umi-root>\UmiOCR-data\plugins\win_x64_PaddleOCR_Py\install_status.py" `
+  check-env --env cpu --backend onnxruntime --models ready
 uv run --locked --extra windows python scripts/verify_umiocr_runtime.py `
-  --path <umi-root> --engine paddle --check-environment
+  --path <umi-root> --engine paddle --check-environment --provider-mode cpu
 uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py `
   --input test_assets\true_scanned_test.pdf `
   --output <local-output.pdf> --umiocr <umi-root>\Umi-OCR.exe `
-  --engine paddle --lang en --timeout 21600 --report <report.json>
+  --engine paddle --lang en --provider-mode cpu --timeout 21600 `
+  --report <report.json>
 ~~~
+
+The generated `install_status.json` is part of Umi launcher readiness but is
+not committed or checksum-pinned. Its required fields and provider backend
+mapping live in the NeoEngine manifest; the verifier must compare the status
+record with direct imports, provider observations, and real model files.
+
+The host launch boundary in `ocr_flow/self_check.py` must remove inherited
+`PYTHONHOME` and `PYTHONPATH` while preserving the rest of the environment.
+The bundled host and plugin Python versions differ from the project uv Python;
+mixing their standard libraries produces `SRE module mismatch` before OCR init.
+Keep the polluted-environment regression in `tests/test_self_check.py`.
+
+CPU ONNX is the default. GPU remains explicit through a separate `.venv_gpu`
+and `--provider-mode gpu`; provider readiness is insufficient unless the real
+Umi log also reports `backend=gpu(onnx-cuda) device=gpu` without fallback.
+Do not accept an executable merely because it exists or exposes Paddle model
+paths: the full manifest, environment, model, and layered-PDF gates are required.
+
+When changing the NeoEngine plugin or any dependency, update the manifest's
+plugin commit, Python/dependency versions, model list, file hashes,
+install-status contract,
+`verify_umiocr_runtime.py`, `validate_umiocr_layered_pdf.py`, their focused
+tests, and all four maintained OCR documents in the same change. Never edit a
+version only in prose.
 
 The old `win7_x64_PaddleOCR-json` plugin is retained outside the active
 directory in the task's timestamped rollback artifact. Do not delete it while

@@ -67,7 +67,52 @@ def probe_plugin_environment(
         raise ValueError("provider_mode must be 'cpu' or 'gpu'")
     plugin = manifest.get("plugin")
     if not isinstance(plugin, dict):
+        if manifest.get("engine") == "paddle":
+            return ["Paddle runtime manifest has no plugin contract"], {}
         return [], {}
+
+    contract_failures = []
+    expected_python = plugin.get("python")
+    if not isinstance(expected_python, str) or not expected_python:
+        contract_failures.append("NeoEngine manifest has no plugin.python version")
+    expected_dependencies = plugin.get("dependencies")
+    if not isinstance(expected_dependencies, dict):
+        contract_failures.append("NeoEngine manifest has no plugin.dependencies map")
+        expected_dependencies = {}
+    for name in ("paddlepaddle", "paddleocr", "onnxruntime"):
+        if not isinstance(expected_dependencies.get(name), str) or not expected_dependencies[name]:
+            contract_failures.append(
+                f"NeoEngine manifest has no plugin.dependencies.{name} version"
+            )
+    expected_models = plugin.get("models")
+    if (
+        not isinstance(expected_models, list)
+        or not expected_models
+        or not all(isinstance(model, str) and model for model in expected_models)
+    ):
+        contract_failures.append("NeoEngine manifest has no valid plugin.models list")
+        expected_models = []
+    install_status_contract = plugin.get("install_status")
+    if not isinstance(install_status_contract, dict):
+        contract_failures.append("NeoEngine manifest has no plugin.install_status contract")
+        install_status_contract = {}
+    status_relative_path = install_status_contract.get("path")
+    if not isinstance(status_relative_path, str) or not status_relative_path:
+        contract_failures.append("NeoEngine manifest has no install-status path")
+    provider_backends = install_status_contract.get("backends")
+    if not isinstance(provider_backends, dict) or not all(
+        isinstance(provider_backends.get(mode), str) and provider_backends[mode]
+        for mode in ("cpu", "gpu")
+    ):
+        contract_failures.append("NeoEngine manifest has no valid install-status backends")
+        provider_backends = {}
+    for field in ("required_status", "required_models"):
+        if not isinstance(install_status_contract.get(field), str) or not install_status_contract[field]:
+            contract_failures.append(
+                f"NeoEngine manifest has no install-status {field} value"
+            )
+    if contract_failures:
+        return contract_failures, {}
 
     plugin_root = root / "UmiOCR-data" / "plugins" / "win_x64_PaddleOCR_Py"
     environment_name = ".venv_gpu" if provider_mode == "gpu" else ".venv"
@@ -84,9 +129,10 @@ def probe_plugin_environment(
         }
 
     probe = (
-        "import json, sys, onnxruntime, paddle, paddleocr; "
+        "import json, platform, sys, onnxruntime, paddle, paddleocr; "
         "print('__OCR_FLOW_ENV__' + json.dumps({"
         "'python': sys.executable, "
+        "'python_version': platform.python_version(), "
         "'paddle': paddle.__version__, 'paddleocr': paddleocr.__version__, "
         "'onnxruntime': onnxruntime.__version__, "
         "'providers': onnxruntime.get_available_providers(), "
@@ -143,13 +189,18 @@ def probe_plugin_environment(
     observations = {
         "provider_mode": provider_mode,
         "python": observed.get("python", str(python_path)),
+        "python_version": observed.get("python_version"),
         "paddle": observed.get("paddle"),
         "paddleocr": observed.get("paddleocr"),
         "onnxruntime": observed.get("onnxruntime"),
         "providers": observed.get("providers", []),
         "device": observed.get("device"),
     }
-    expected_dependencies = plugin.get("dependencies", {})
+    if expected_python != observed.get("python_version"):
+        failures.append(
+            f"python version mismatch: expected {expected_python}, "
+            f"found {observed.get('python_version')}"
+        )
     for name in ("paddlepaddle", "paddleocr", "onnxruntime"):
         package_name = {
             "paddlepaddle": "paddle",
@@ -179,9 +230,6 @@ def probe_plugin_environment(
             f"{providers}"
         )
 
-    expected_models = plugin.get(
-        "models", ["PP-OCRv6_medium_det_onnx", "PP-OCRv6_medium_rec_onnx"]
-    )
     for model in expected_models:
         model_file = (
             plugin_root
@@ -192,6 +240,68 @@ def probe_plugin_environment(
         )
         if not model_file.is_file() or model_file.stat().st_size == 0:
             failures.append(f"Missing cached NeoEngine model: {model}")
+
+    status_path = root / status_relative_path
+    if not status_path.is_file():
+        failures.append(
+            "NeoEngine install status is missing: "
+            f"{status_relative_path}; run the plugin's install_status.py "
+            "check-env command after installing dependencies and models"
+        )
+        return failures, observations
+    try:
+        install_status = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        failures.append(f"NeoEngine install status is unreadable: {error}")
+        return failures, observations
+    if not isinstance(install_status, dict):
+        failures.append("NeoEngine install status must be a JSON object")
+        return failures, observations
+    status_environments = install_status.get("envs")
+    if not isinstance(status_environments, dict):
+        failures.append("NeoEngine install status has no envs object")
+        return failures, observations
+    status_entry = status_environments.get(provider_mode, {})
+    if not isinstance(status_entry, dict):
+        failures.append(
+            f"NeoEngine install status envs.{provider_mode} must be an object"
+        )
+        return failures, observations
+    observations["install_status"] = status_entry
+    required_status = install_status_contract["required_status"]
+    if status_entry.get("status") != required_status:
+        failures.append(
+            f"NeoEngine {provider_mode} install status is not complete: "
+            f"{status_entry.get('status')}"
+        )
+    expected_backend = provider_backends[provider_mode]
+    if status_entry.get("backend") != expected_backend:
+        failures.append(
+            f"NeoEngine {provider_mode} install backend mismatch: "
+            f"expected {expected_backend}, found {status_entry.get('backend')}"
+        )
+    if status_entry.get("python_version") != expected_python:
+        failures.append(
+            f"NeoEngine {provider_mode} install Python mismatch: expected "
+            f"{expected_python}, found {status_entry.get('python_version')}"
+        )
+    required_models = install_status_contract["required_models"]
+    if status_entry.get("models") != required_models:
+        failures.append(
+            f"NeoEngine {provider_mode} install models are not ready: "
+            f"{status_entry.get('models')}"
+        )
+    recorded_imports = status_entry.get("imports", {})
+    missing_imports = [
+        name
+        for name in ("paddle", "paddleocr", "onnxruntime")
+        if recorded_imports.get(name) is not True
+    ]
+    if missing_imports:
+        failures.append(
+            "NeoEngine install status has incomplete imports: "
+            + ", ".join(missing_imports)
+        )
     return failures, observations
 
 

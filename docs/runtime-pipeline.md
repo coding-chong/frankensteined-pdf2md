@@ -58,18 +58,43 @@ them through GET /api/doc/get_options before OCR uploads begin.
 
 The default Paddle profile is `chapterv/umi-paddle-neoengine` version 1.4 at
 commit `e1acb9d22a8b4f343cd0c6d18dec694d809d02e7`. It runs in the plugin-local
-Python 3.12 environment with `paddlepaddle==3.2.1`, `paddleocr==3.7.0`, and
+Python 3.12.10 environment with `paddlepaddle==3.2.1`, `paddleocr==3.7.0`, and
 `onnxruntime==1.26.0`; `CPUExecutionProvider` is the supported baseline. The
-English PP-OCRv6 medium ONNX detection and recognition models must be present
-in the plugin's `paddlex/` cache before a run is considered ready.
+The `PP-OCRv6_medium_det_onnx` and `PP-OCRv6_medium_rec_onnx` models must be
+present in the plugin's `paddlex/` cache before a run is considered ready.
 
 Verify both the immutable files and the dynamic environment before starting
-the host:
+the host. The plugin-owned status command records the completed CPU environment
+for Umi's launcher; the project verifier independently rechecks its claims:
 
 ~~~powershell
+& "<umi-root>\UmiOCR-data\plugins\win_x64_PaddleOCR_Py\.venv\Scripts\python.exe" `
+  "<umi-root>\UmiOCR-data\plugins\win_x64_PaddleOCR_Py\install_status.py" `
+  check-env --env cpu --backend onnxruntime --models ready
 uv run --locked --extra windows python scripts/verify_umiocr_runtime.py `
-  --path <umi-root> --engine paddle --check-environment
+  --path <umi-root> --engine paddle --check-environment --provider-mode cpu
+uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py `
+  --input test_assets\test_page_scanned.pdf `
+  --output output\paddle-local-smoke\result.pdf `
+  --umiocr <umi-root>\Umi-OCR.exe --engine paddle --lang en `
+  --provider-mode cpu --report output\paddle-local-smoke\report.json
 ~~~
+
+The generated `install_status.json` is machine-local and is not a hashed vendor
+asset. Its required path, state, model marker, and CPU/GPU backend mapping are
+declared in `umiocr-paddle-neoengine-v1.4.json`. Missing or stale status fails
+readiness even when direct imports happen to succeed.
+
+The Umi host and NeoEngine plugin own Python installations separate from the
+project's locked interpreter. `start_umi_ocr` removes inherited `PYTHONHOME`
+and `PYTHONPATH` before launching the bundled host; otherwise uv's Python 3.13
+stdlib can mix with plugin Python 3.12.10 and fail with `SRE module mismatch`.
+All other environment variables remain available to the child process.
+
+Paddle layered-PDF validation defaults to the CPU provider contract. GPU is an
+explicit opt-in using the separate `.venv_gpu` and `--provider-mode gpu`; it
+requires CUDA and CPU providers, a GPU device, and real Umi engine-log evidence
+without a fallback marker. Rapid does not accept this Paddle provider option.
 
 The previous `win7_x64_PaddleOCR-json` plugin and Umi settings remain in the
 operator's timestamped rollback copy. To restore it, stop the project-local
@@ -90,6 +115,9 @@ coding-chong/frankensteined-pdf2md first checks the options endpoint, then start
 runtime when necessary. A service whose selectable values do not match the
 configured engine fails before upload. This prevents a running Paddle service
 from being mistaken for Rapid support.
+Path existence and Paddle language values alone do not prove NeoEngine OCR V6:
+the manifest, plugin environment, provider, model cache, and layered PDF must
+all pass their respective gates.
 
 Use both proof layers for a newly acquired runtime:
 
