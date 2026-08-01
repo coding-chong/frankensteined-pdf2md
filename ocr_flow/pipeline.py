@@ -469,6 +469,15 @@ class Pipeline:
                         if self.verbose:
                             print(f"  Failed: {e}")
 
+                    state.update_step(
+                        "mineru",
+                        status="partial",
+                        completed=sorted(set(completed)),
+                        failed=dict(failed),
+                        error=None,
+                    )
+                    self.state_manager.save()
+
                 completed = sorted(set(completed))
                 if failed:
                     error = None

@@ -225,6 +225,78 @@ class TestPipelineRun:
         submitted_pdf = mock_mineru_instance.convert.call_args.args[0]
         assert submitted_pdf.name == "compressed_001.pdf"
 
+    @patch('ocr_flow.pipeline.split_pdf')
+    @patch('ocr_flow.pipeline.compress_pdf')
+    @patch('ocr_flow.pipeline.validate_compressed_pdf')
+    @patch('ocr_flow.pipeline.MinerUClient')
+    @patch('ocr_flow.pipeline.format_fix')
+    @patch('ocr_flow.pipeline.download_images')
+    def test_mineru_progress_is_persisted_after_each_segment(
+        self,
+        mock_download,
+        mock_format,
+        mock_mineru,
+        mock_validate,
+        mock_compress,
+        mock_split,
+        mock_config,
+        text_pdf,
+        output_dir,
+    ):
+        split_files = [output_dir / f"part_{page:03d}.pdf" for page in (1, 2)]
+        compressed_files = [
+            output_dir / f"compressed_part_{page:03d}.pdf" for page in (1, 2)
+        ]
+        for path in split_files + compressed_files:
+            path.write_bytes(b"%PDF")
+
+        mock_split.return_value = split_files
+        mock_compress.side_effect = compressed_files
+        mock_validate.return_value = CompressionValidation(
+            preserved=True,
+            reason="text_preserved",
+            source_pages=1,
+            candidate_pages=1,
+            source_has_meaningful_text=True,
+            minimum_text_similarity=1.0,
+            pages=(),
+        )
+
+        calls = 0
+
+        def convert_side_effect(pdf_path, part_dir):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                saved = State.load(next(output_dir.rglob(".state.json")))
+                assert saved.total_pages == 2
+                assert saved.current_step == "mineru"
+                progress = saved.get_step_status("mineru")
+                assert progress.status == "partial"
+                assert progress.completed == [1]
+                assert progress.failed == {}
+            markdown = Path(part_dir) / "full.md"
+            markdown.write_text(f"# {Path(pdf_path).stem}", encoding="utf-8")
+            return markdown
+
+        def format_side_effect(md_file, output_md, is_translated=False):
+            Path(output_md).write_text(
+                Path(md_file).read_text(encoding="utf-8"), encoding="utf-8"
+            )
+
+        mock_mineru_instance = MagicMock()
+        mock_mineru_instance.convert.side_effect = convert_side_effect
+        mock_mineru.return_value = mock_mineru_instance
+        mock_format.side_effect = format_side_effect
+        mock_download.return_value = (True, [])
+
+        pipeline = Pipeline(config=mock_config)
+        pipeline.run(text_pdf, output_dir, pdf_type="text")
+
+        saved = State.load(next(output_dir.rglob(".state.json")))
+        assert saved.get_step_status("mineru").status == "completed"
+        assert saved.get_step_status("mineru").completed == [1, 2]
+
     @patch('ocr_flow.pipeline.download_images')
     @patch('ocr_flow.pipeline.format_fix')
     @patch('ocr_flow.pipeline.MinerUClient')
