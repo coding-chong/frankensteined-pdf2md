@@ -40,6 +40,19 @@ HTML_IMAGE_RE = re.compile(
     re.IGNORECASE,
 )
 HEADING_RE = re.compile(r"^#{1,6}\s+(?P<title>.+?)\s*$", re.MULTILINE)
+BOOK_TEXT_REPLACEMENTS = (
+    ("VorpÈrian", "Vorpérian"),
+    ("VopÈrian", "Vorpérian"),
+    ("VatchÈ VorprÈian", "Vatché Vorpérian"),
+    ("ThÈvenin", "Thévenin"),
+    ("pp.1218ñ1230", "pp. 1218–1230"),
+    ("为ñ163", "为−163"),
+    (" ñ ", " – "),
+    ("<sup>Æ</sup>", "<sup>®</sup>"),
+    ("ì", "“"),
+    ("î", "”"),
+    ("小信号扰动uà组成", "小信号扰动 $\\hat{u}$ 组成"),
+)
 
 
 @dataclass(frozen=True)
@@ -138,6 +151,27 @@ def discover_source_chunks(output_root: Path, total_pages: int) -> list[SourceCh
         for group in candidates.values()
     ]
     selected.sort(key=lambda item: (item.start_page, item.end_page))
+    if not selected:
+        expected_parts = list(range(1, total_pages + 1))
+        final_dirs = set(output_root.glob("*/*/final"))
+        if output_root.name == "final":
+            final_dirs.add(output_root)
+        if (output_root / "final").is_dir():
+            final_dirs.add(output_root / "final")
+
+        complete_runs = [
+            SourceChunk(1, total_pages, final_dir.parent.parent.name, final_dir)
+            for final_dir in sorted(final_dirs)
+            if _part_numbers(final_dir) == expected_parts
+        ]
+        if complete_runs:
+            return [
+                max(
+                    complete_runs,
+                    key=lambda item: (item.timestamp, item.final_dir.as_posix()),
+                )
+            ]
+
     _validate_source_coverage(selected, total_pages)
     return selected
 
@@ -170,6 +204,12 @@ def _rewrite_page_image_paths(text: str, chunk: SourceChunk) -> str:
         return f"images/p{global_page:03d}/"
 
     return PAGE_IMAGE_RE.sub(replace, text)
+
+
+def _normalize_book_text(text: str) -> str:
+    for source, replacement in BOOK_TEXT_REPLACEMENTS:
+        text = text.replace(source, replacement)
+    return text
 
 
 def _copy_with_collision_check(
@@ -526,6 +566,7 @@ def build_package(
                 text = _rewrite_page_image_paths(
                     source.read_text(encoding="utf-8"), chunk
                 )
+                text = _normalize_book_text(text)
                 destination_page = staging / f"part_{global_page:03d}.md"
                 destination_page.write_text(text, encoding="utf-8")
                 pages.append(_page_payload(global_page, text))

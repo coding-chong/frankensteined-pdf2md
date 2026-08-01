@@ -35,6 +35,24 @@ def _make_chunk(
     return final_dir
 
 
+def _make_complete_run(
+    output_root: Path,
+    timestamp: str,
+    total_pages: int,
+    *,
+    missing_page: int | None = None,
+) -> Path:
+    final_dir = output_root / timestamp / "book" / "final"
+    final_dir.mkdir(parents=True)
+    for page in range(1, total_pages + 1):
+        if page == missing_page:
+            continue
+        (final_dir / f"part_{page:03d}.md").write_text(
+            f"# Page {page}\n", encoding="utf-8"
+        )
+    return final_dir
+
+
 def test_discovery_prefers_latest_complete_chunk_and_ignores_partial(tmp_path):
     output_root = tmp_path / "output"
     old = _make_chunk(output_root, 1, 2, "20260101_000000")
@@ -51,6 +69,23 @@ def test_discovery_prefers_latest_complete_chunk_and_ignores_partial(tmp_path):
     chunks = merger.discover_source_chunks(output_root, total_pages=4)
 
     assert [chunk.final_dir for chunk in chunks] == [latest, tail]
+    assert old not in [chunk.final_dir for chunk in chunks]
+
+
+def test_discovery_accepts_latest_complete_conversion_run(tmp_path):
+    output_root = tmp_path / "full-run"
+    old = _make_complete_run(output_root, "20260101_000000", 4)
+    latest = _make_complete_run(output_root, "20260101_000200", 4)
+    _make_complete_run(
+        output_root,
+        "20260101_000300",
+        4,
+        missing_page=4,
+    )
+
+    chunks = merger.discover_source_chunks(output_root, total_pages=4)
+
+    assert [chunk.final_dir for chunk in chunks] == [latest]
     assert old not in [chunk.final_dir for chunk in chunks]
 
 
@@ -77,6 +112,18 @@ def test_page_scoped_image_paths_are_mapped_to_physical_pages(tmp_path):
 
     assert merger._rewrite_page_image_paths(text, chunk) == (
         "![](images/p487/first.jpg) ![](images/p496/last.jpg)"
+    )
+
+
+def test_known_book_mojibake_is_normalized():
+    text = (
+        "VorpÈrian and ThÈvenin ñ pp.1218ñ1230 "
+        "SIMPLIS<sup>Æ</sup> ìtitleî 小信号扰动uà组成"
+    )
+
+    assert merger._normalize_book_text(text) == (
+        "Vorpérian and Thévenin – pp. 1218–1230 "
+        "SIMPLIS<sup>®</sup> “title” 小信号扰动 $\\hat{u}$ 组成"
     )
 
 
