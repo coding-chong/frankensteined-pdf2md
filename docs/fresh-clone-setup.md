@@ -1,6 +1,6 @@
-# coding-chong/frankensteined-pdf2md: Windows 新机：从 Clone 到 CPU-only Rapid 验证
+# coding-chong/frankensteined-pdf2md: Windows 新机与 OCR V6 安装
 
-本页是 Windows x64 新机器、CPU-only Rapid 和部署诊断的详细准备手册。完整的人类
+本页是 Windows x64 新机器、Paddle OCR V6、可选 Rapid 和部署诊断的详细准备手册。完整的人类
 转换流程在 [README.md](../README.md)；本页扩展新机安装、组件获取和验证，不取代
 README 的步骤 1 到 7。完成本页所需部分后，再按需要阅读
 [运行时与输出契约](runtime-pipeline.md)、[BabelDOC profile](babeldoc-runtime-profiles.md)
@@ -56,6 +56,163 @@ uv run --locked --extra windows ocr-flow --help
 
 PySocks 不在表中，也不是项目依赖：代码没有导入它，uv.lock 也没有锁定它。
 不要为了本项目额外安装 PySocks。
+
+### 2.1 安装 Paddle NeoEngine OCR V6（默认 CPU 路径）
+
+下面是另一台 Windows 电脑需要执行的完整外部运行时安装步骤。`ocr-flow` 不会自动
+安装 Umi-OCR、NeoEngine、插件 Python 或模型；人工操作或 AI 安装时都应执行本节，
+再用第 4 节的项目校验器验收。命令假设第 1 节已安装 Git 和 uv。
+
+#### 下载并解压官方 Umi-OCR
+
+从 Umi-OCR 官方 v2.1.5 Release 下载 Paddle 包，不要用 Rapid 包替代：
+
+~~~powershell
+$downloadRoot = Join-Path $env:TEMP ("frank-umiocr-v6-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+New-Item -ItemType Directory -Path $downloadRoot | Out-Null
+$umiArchive = Join-Path $downloadRoot "Umi-OCR_Paddle_v2.1.5.7z.exe"
+Invoke-WebRequest `
+  -Uri "https://github.com/hiroi-sora/Umi-OCR/releases/download/v2.1.5/Umi-OCR_Paddle_v2.1.5.7z.exe" `
+  -OutFile $umiArchive
+Start-Process -FilePath $umiArchive -WorkingDirectory $downloadRoot -Wait
+~~~
+
+自解压窗口出现后，把目录选为 `C:\Tools\Umi-OCR_Paddle_v2.1.5`。若选择其他目录，
+只需修改后续 `$umiRoot`；不要把 Umi-OCR 解压进本仓库或提交 vendor 文件：
+
+~~~powershell
+$umiRoot = "C:\Tools\Umi-OCR_Paddle_v2.1.5"
+if (-not (Test-Path -LiteralPath "$umiRoot\Umi-OCR.exe" -PathType Leaf)) {
+  throw "Umi-OCR.exe not found under $umiRoot"
+}
+~~~
+
+`Invoke-WebRequest` 和 Git 必须保留 Windows 的系统 CA 与代理策略。不要使用
+`-SkipCertificateCheck`、`curl -k` 或关闭企业代理来绕过下载错误。
+
+#### 取得固定 NeoEngine 源码并安装插件文件
+
+NeoEngine 1.4 没有可依赖的 GitHub Release 资产，因此从官方仓库检出项目 manifest
+固定的 commit。`core.autocrlf=true` 是静态文件指纹契约的一部分；省略它会让 LF/CRLF
+差异导致 verifier 拒绝插件：
+
+~~~powershell
+$neoCommit = "e1acb9d22a8b4f343cd0c6d18dec694d809d02e7"
+$neoRoot = Join-Path $downloadRoot "umi-paddle-neoengine"
+git clone --no-checkout https://github.com/chapterv/umi-paddle-neoengine.git $neoRoot
+git -C $neoRoot config core.autocrlf true
+git -C $neoRoot checkout --detach $neoCommit
+if ((git -C $neoRoot rev-parse HEAD).Trim() -ne $neoCommit) {
+  throw "Unexpected NeoEngine revision"
+}
+if ((Get-Content -LiteralPath "$neoRoot\VERSION" -Raw).Trim() -ne "1.4") {
+  throw "Unexpected NeoEngine version"
+}
+~~~
+
+先备份已有的活动插件和 Umi 设置。官方旧
+`UmiOCR-data\plugins\win7_x64_PaddleOCR-json` 目录名称不同，必须原样保留作为回滚：
+
+~~~powershell
+$pluginParent = "$umiRoot\UmiOCR-data\plugins"
+$pluginRoot = "$pluginParent\win_x64_PaddleOCR_Py"
+$rollbackRoot = "$umiRoot.rollback-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+New-Item -ItemType Directory -Path $rollbackRoot | Out-Null
+if (Test-Path -LiteralPath $pluginRoot) {
+  Move-Item -LiteralPath $pluginRoot -Destination "$rollbackRoot\win_x64_PaddleOCR_Py"
+}
+foreach ($settingsName in ".settings", ".pre_settings") {
+  $settingsPath = Join-Path $umiRoot $settingsName
+  if (Test-Path -LiteralPath $settingsPath) {
+    Copy-Item -LiteralPath $settingsPath -Destination $rollbackRoot
+  }
+}
+New-Item -ItemType Directory -Force -Path $pluginRoot | Out-Null
+Copy-Item -Path "$neoRoot\win_x64_PaddleOCR_Py\*" -Destination $pluginRoot -Recurse -Force
+~~~
+
+不要应用仓库里的可选 Umi host patches，也不要安装 P1 表格/公式扩展；Frank 的基础
+扫描 PDF OCR V6 路径只需要上述插件文件。移动整个旧活动目录也会隔离可能残留的
+`.venv_gpu`，避免 `run.cmd` 优先选择错误环境。若是修复半成品安装，先完整保留新的
+rollback 目录，再从同一固定 commit 创建插件目录并重建下述 `.venv`。
+
+#### 创建插件环境并安装固定 CPU 依赖
+
+项目本身使用 Python 3.13.12；Umi 插件必须使用自己目录里的 Python 3.12.10，两个
+环境不能混用。`--clear` 只重建明确指定的插件 `.venv`，适合首次安装和幂等重跑：
+
+~~~powershell
+uv python install 3.12.10
+uv venv --python 3.12.10 --seed --clear "$pluginRoot\.venv"
+$pluginPython = "$pluginRoot\.venv\Scripts\python.exe"
+uv pip install --python $pluginPython `
+  "paddlepaddle==3.2.1" `
+  "paddleocr==3.7.0" `
+  "onnxruntime==1.26.0"
+& $pluginPython -c "import platform; print(platform.python_version())"
+~~~
+
+输出必须是 `3.12.10`。上游 `setup.bat` 默认建立 Python 3.11 的 `.venv_gpu`，不等同
+于本项目锁定的 `.venv` CPU baseline；不要用它替代以上命令。也不要在全局 Python
+或本仓库 `.venv` 里手工安装这些插件依赖。
+
+#### 下载 OCR V6 medium ONNX 模型并生成安装状态
+
+以下初始化只下载 Frank 默认路径需要的 medium 检测/识别模型。PaddleX 缓存被明确
+限制在插件目录，不会依赖另一台电脑用户目录中的 `~/.paddlex`：
+
+~~~powershell
+$env:PADDLE_PDX_CACHE_HOME = "$pluginRoot\paddlex"
+Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue
+Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
+@'
+from paddleocr import PaddleOCR
+
+PaddleOCR(
+    device="cpu",
+    lang="ch",
+    ocr_version="PP-OCRv6",
+    use_doc_orientation_classify=False,
+    use_doc_unwarping=False,
+    use_textline_orientation=False,
+    enable_mkldnn=False,
+    engine="onnxruntime",
+    engine_config={"providers": ["CPUExecutionProvider"]},
+)
+print("PP-OCRv6 medium ONNX models ready")
+'@ | & $pluginPython -
+
+& $pluginPython "$pluginRoot\install_status.py" `
+  check-env --env cpu --backend onnxruntime --models ready
+~~~
+
+成功时，下面两个文件必须非空，且 `install_status.json` 的 `envs.cpu` 必须记录
+`status=complete`、`backend=onnxruntime`、`python_version=3.12.10` 和
+`models=ready`：
+
+~~~powershell
+Get-Item `
+  "$pluginRoot\paddlex\official_models\PP-OCRv6_medium_det_onnx\inference.onnx", `
+  "$pluginRoot\paddlex\official_models\PP-OCRv6_medium_rec_onnx\inference.onnx", `
+  "$pluginRoot\install_status.json"
+Get-Content -LiteralPath "$pluginRoot\install_status.json" -Raw
+~~~
+
+网络或 pip 中断时，不要手写 `install_status.json`。保留报错，重新执行“创建插件环境”
+和“下载模型”两段；`uv venv --clear` 会清理残缺环境，已完整下载的模型缓存可复用。
+若静态 verifier 报文件指纹不符，重新用 `core.autocrlf=true` 检出固定 commit 并覆盖
+插件源码，不要降低或修改 manifest 校验。
+
+#### 配置并验收
+
+继续执行第 3 节配置，将 `engine` 设为 `paddle`、`language` 设为
+`models/config_en.txt`，并把 `exe_path` 指向 `$umiRoot\Umi-OCR.exe`。然后完整执行
+第 4 节 Paddle 的 manifest/environment、layered-PDF 和 doctor 命令。只有这些门全部
+通过，才表示新电脑上的 OCR V6 安装完成。
+
+需要回滚时先停止 Umi-OCR，只恢复同一个 rollback 目录中的活动插件与 `.settings` /
+`.pre_settings`；旧 `win7_x64_PaddleOCR-json` 始终保留。不要混用不同时间的插件和设置
+备份，也不要把 rollback、模型、虚拟环境或用户配置提交到 Git。
 
 ## 3. 用户配置与 Umi-OCR 引擎选择
 

@@ -40,8 +40,9 @@ uv run --locked --extra windows ocr-flow --help
 `ocr_flow` 子目录安装，也不要全局安装 `ocr-flow` 或手动创建项目虚拟环境；这些
 方式会绕开仓库锁定的依赖。
 
-CPU-only 机器的完整安装顺序、Rapid 下载、版本边界和本地验证在
-[Windows 新机：从 Clone 到 CPU-only Rapid 验证](docs/fresh-clone-setup.md)。
+Windows 新机的完整安装顺序、Paddle OCR V6 插件环境与模型准备、Rapid 下载、版本
+边界和本地验证在
+[Windows 新机与 OCR V6 安装](docs/fresh-clone-setup.md)。
 
 ## 2. 安装外部组件，然后使用 ocr-flow 交互式配置
 
@@ -137,10 +138,11 @@ uv run --locked --extra windows ocr-flow doctor
 
 ### Paddle：NeoEngine ONNX CPU baseline
 
-从 [hiroi-sora/Umi-OCR v2.1.5 Release](https://github.com/hiroi-sora/Umi-OCR/releases/tag/v2.1.5)
-取得 `Umi-OCR_Paddle_v2.1.5.7z.exe`，并在其
+按 [Windows 新机与 OCR V6 安装](docs/fresh-clone-setup.md#21-安装-paddle-neoengine-ocr-v6默认-cpu-路径)
+取得官方 `Umi-OCR_Paddle_v2.1.5.7z.exe`，并在
 `UmiOCR-data/plugins/win_x64_PaddleOCR_Py` 安装
-[umi-paddle-neoengine](https://github.com/chapterv/umi-paddle-neoengine) 1.4。
+[umi-paddle-neoengine](https://github.com/chapterv/umi-paddle-neoengine) 1.4。该指南包含
+固定源码检出、插件 `.venv`、依赖、模型、安装状态、回滚和故障重跑命令。
 固定 commit 为 `e1acb9d22a8b4f343cd0c6d18dec694d809d02e7`，plugin-local 环境必须是
 Python 3.12.10、PaddlePaddle 3.2.1、PaddleOCR 3.7.0 和 ONNX Runtime 1.26.0，
 并缓存 `PP-OCRv6_medium_det_onnx` 与 `PP-OCRv6_medium_rec_onnx`。配置向导中
@@ -304,7 +306,7 @@ uv run --locked --extra windows python scripts/generate_complex_pdf_scan.py --ve
 
 | 需要了解什么 | 文档 |
 | --- | --- |
-| Windows 安装、版本、组件获取与 CPU-only Rapid 验证 | [fresh-clone-setup.md](docs/fresh-clone-setup.md) |
+| Windows 安装、Paddle OCR V6、版本、组件获取与 Rapid 验证 | [fresh-clone-setup.md](docs/fresh-clone-setup.md) |
 | 管线阶段、输出、配置与恢复规则 | [runtime-pipeline.md](docs/runtime-pipeline.md) |
 | BabelDOC runtime 与 DirectML profile | [babeldoc-runtime-profiles.md](docs/babeldoc-runtime-profiles.md) |
 | 六页复杂 PDF 的真实服务矩阵 | [complex-pdf-live-matrix.md](docs/complex-pdf-live-matrix.md) |

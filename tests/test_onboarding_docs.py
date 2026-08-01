@@ -180,6 +180,35 @@ def test_fresh_clone_guide_indexes_cpu_rapid_and_complex_matrix_contracts():
         assert expected in guide
 
 
+def test_fresh_clone_guide_contains_reproducible_paddle_v6_install_commands():
+    guide = _read("docs/fresh-clone-setup.md")
+
+    for expected in (
+        "https://github.com/hiroi-sora/Umi-OCR/releases/download/v2.1.5/"
+        "Umi-OCR_Paddle_v2.1.5.7z.exe",
+        "git clone --no-checkout https://github.com/chapterv/"
+        "umi-paddle-neoengine.git $neoRoot",
+        "git -C $neoRoot config core.autocrlf true",
+        "e1acb9d22a8b4f343cd0c6d18dec694d809d02e7",
+        'uv venv --python 3.12.10 --seed --clear "$pluginRoot\\.venv"',
+        '"paddlepaddle==3.2.1"',
+        '"paddleocr==3.7.0"',
+        '"onnxruntime==1.26.0"',
+        'ocr_version="PP-OCRv6"',
+        'engine="onnxruntime"',
+        'engine_config={"providers": ["CPUExecutionProvider"]}',
+        "PP-OCRv6_medium_det_onnx\\inference.onnx",
+        "PP-OCRv6_medium_rec_onnx\\inference.onnx",
+        "check-env --env cpu --backend onnxruntime --models ready",
+        "上游 `setup.bat` 默认建立 Python 3.11 的 `.venv_gpu`",
+    ):
+        assert expected in guide
+
+    assert "-SkipCertificateCheck" in guide
+    assert "不要手写 `install_status.json`" in guide
+    assert "P1 表格/公式扩展" in guide
+
+
 def test_ai_guide_is_repository_neutral_and_indexes_runtime_owners():
     guide = _read("docs/ai-maintenance-guide.md")
 
