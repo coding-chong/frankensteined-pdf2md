@@ -581,6 +581,84 @@ class TestCdnDownloadFallback:
         )
         assert command[command.index('--noproxy') + 1] == "*"
 
+    def test_extract_archive_stages_outside_deep_output_tree(
+        self, temp_dir
+    ):
+        output_dir = temp_dir / "matrix" / "profile" / "case" / "part_001"
+        output_dir.mkdir(parents=True)
+        archive_path = temp_dir / "result.zip"
+        uuid_dir = "fb0d4e23-f34b-4033-9604-61287ba453c9"
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("full.md", "# Extracted")
+            archive.writestr(f"{uuid_dir}/model.json", "{}")
+
+        extraction_destinations = []
+        real_zip_file = zipfile.ZipFile
+
+        class RecordingArchive:
+            def __init__(self, *args, **kwargs):
+                self._archive = real_zip_file(*args, **kwargs)
+
+            def __enter__(self):
+                self._archive.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self._archive.__exit__(*args)
+
+            def extractall(self, destination):
+                extraction_destinations.append(Path(destination))
+                self._archive.extractall(destination)
+
+        with patch.object(mineru.zipfile, "ZipFile", RecordingArchive):
+            MinerUClient._extract_archive(str(archive_path), output_dir)
+
+        assert extraction_destinations
+        assert output_dir not in extraction_destinations[0].parents
+        assert len(str(extraction_destinations[0])) < len(str(output_dir))
+        assert (output_dir / "full.md").read_text(encoding="utf-8") == "# Extracted"
+        assert (output_dir / uuid_dir / "model.json").read_text(encoding="utf-8") == "{}"
+
+    def test_extract_archive_rejects_type_collision_before_replacing_markdown(
+        self, temp_dir
+    ):
+        output_dir = temp_dir / "result"
+        (output_dir / "assets").mkdir(parents=True)
+        (output_dir / "full.md").write_text("# Durable", encoding="utf-8")
+        retained_asset = output_dir / "assets" / "retained.txt"
+        retained_asset.write_text("keep", encoding="utf-8")
+        archive_path = temp_dir / "collision.zip"
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("full.md", "# Replacement")
+            archive.writestr("assets", "not a directory")
+
+        with pytest.raises(RuntimeError, match="merge type collision: assets"):
+            MinerUClient._extract_archive(str(archive_path), output_dir)
+
+        assert (output_dir / "full.md").read_text(encoding="utf-8") == "# Durable"
+        assert retained_asset.read_text(encoding="utf-8") == "keep"
+
+    def test_merge_preflight_checks_nested_entries_in_new_directories(
+        self, temp_dir
+    ):
+        source_dir = temp_dir / "staging"
+        nested_entry = source_dir / "new-assets" / "nested-link"
+        nested_entry.parent.mkdir(parents=True)
+        nested_entry.write_text("content", encoding="utf-8")
+        output_dir = temp_dir / "result"
+        output_dir.mkdir()
+        path_type = type(source_dir)
+        real_is_symlink = path_type.is_symlink
+
+        def simulated_is_symlink(path):
+            return path.name == "nested-link" or real_is_symlink(path)
+
+        with (
+            patch.object(path_type, "is_symlink", simulated_is_symlink),
+            pytest.raises(RuntimeError, match="rejects symbolic links: nested-link"),
+        ):
+            MinerUClient._validate_merge_tree(source_dir, output_dir)
+
     def test_resolved_curl_keeps_extracted_markdown_when_temp_cleanup_races(
         self, mock_config, temp_dir
     ):

@@ -162,19 +162,60 @@ def test_umiocr_verifier_reports_hash_mismatch(tmp_path):
     ]
 
 
-def _neoengine_environment_root(tmp_path, environment_name=".venv"):
+def test_umiocr_verifier_rejects_static_file_path_escape(tmp_path):
+    outside = tmp_path.parent / "outside.bin"
+    outside.write_bytes(b"outside")
+    manifest = {
+        "files": [
+            {
+                "path": "../outside.bin",
+                "bytes": outside.stat().st_size,
+                "sha256": hashlib.sha256(outside.read_bytes()).hexdigest().upper(),
+            }
+        ]
+    }
+
+    assert verify_umiocr_runtime.verify_runtime(tmp_path, manifest) == [
+        "Manifest file path escapes the runtime root: ../outside.bin"
+    ]
+
+
+def test_paddle_verifier_rejects_missing_plugin_provenance(tmp_path):
+    runtime_file = tmp_path / "runtime.exe"
+    runtime_file.write_bytes(b"known runtime")
+    manifest = {
+        "engine": "paddle",
+        "files": [
+            {
+                "path": "runtime.exe",
+                "bytes": runtime_file.stat().st_size,
+                "sha256": hashlib.sha256(runtime_file.read_bytes()).hexdigest().upper(),
+            }
+        ],
+    }
+
+    assert verify_umiocr_runtime.verify_runtime(tmp_path, manifest) == [
+        "Paddle runtime manifest has no plugin contract"
+    ]
+
+
+def _neoengine_environment_root(tmp_path, environment_name=".venv", portable=False):
     plugin_root = (
         tmp_path
         / "UmiOCR-data"
         / "plugins"
         / "win_x64_PaddleOCR_Py"
     )
-    interpreter = plugin_root / environment_name / "Scripts" / "python.exe"
+    if portable:
+        interpreter = plugin_root / environment_name / "python.exe"
+    else:
+        interpreter = plugin_root / environment_name / "Scripts" / "python.exe"
     interpreter.parent.mkdir(parents=True)
     interpreter.write_bytes(b"placeholder")
     for model in (
         "PP-OCRv6_medium_det_onnx",
         "PP-OCRv6_medium_rec_onnx",
+        "PP-LCNet_x1_0_doc_ori_onnx",
     ):
         model_path = plugin_root / "paddlex" / "official_models" / model
         model_path.mkdir(parents=True)
@@ -208,15 +249,38 @@ def test_neoengine_is_the_default_paddle_manifest_with_provenance():
     manifest = runtime.load_umiocr_manifest("paddle")
 
     assert runtime.DEFAULT_UMIOCR_MANIFEST.name == (
-        "umiocr-paddle-neoengine-v1.4.json"
+        "umiocr-paddle-neoengine-v1.4.2.json"
     )
     assert manifest["plugin"]["source_url"] == (
         "https://github.com/chapterv/umi-paddle-neoengine.git"
     )
     assert manifest["plugin"]["commit"] == (
-        "e1acb9d22a8b4f343cd0c6d18dec694d809d02e7"
+        "6a87fc4145a13b09104836cb22cf05125b143041"
     )
-    assert manifest["plugin"]["version"] == "1.4"
+    assert manifest["plugin"]["static_files_commit"] == manifest["plugin"]["commit"]
+    static_files = {entry["path"]: entry for entry in manifest["files"]}
+    assert (static_files["UmiOCR-data/plugins/win_x64_PaddleOCR_Py/engine.py"]["bytes"],
+            static_files["UmiOCR-data/plugins/win_x64_PaddleOCR_Py/engine.py"]["sha256"]) == (
+        64279,
+        "D49CE70719C622285410D46C535F8589FADE667A8954B6B153CE8ABC8B6E1BC9",
+    )
+    assert (static_files["UmiOCR-data/plugins/win_x64_PaddleOCR_Py/install_status.py"]["bytes"],
+            static_files["UmiOCR-data/plugins/win_x64_PaddleOCR_Py/install_status.py"]["sha256"]) == (
+        13059,
+        "FE6AEFCA7E760860277B92C6266035E4A97C3A5BB07999904472D38D90D56C6D",
+    )
+    assert (static_files["UmiOCR-data/plugins/win_x64_PaddleOCR_Py/PPOCR_api.py"]["bytes"],
+            static_files["UmiOCR-data/plugins/win_x64_PaddleOCR_Py/PPOCR_api.py"]["sha256"]) == (
+        14843,
+        "37AE6DCB135DDCB5357084B77755A37BA5FE7C10FA642FBD72B7CC1A3B3BB747",
+    )
+    assert (static_files["UmiOCR-data/plugins/win_x64_PaddleOCR_Py/run.cmd"]["bytes"],
+            static_files["UmiOCR-data/plugins/win_x64_PaddleOCR_Py/run.cmd"]["sha256"]) == (
+        2389,
+        "479B6468F8944F0559CB6A6741A991ADB653B0B450C1A2B123201ECFAB172410",
+    )
+    assert manifest["plugin"]["version"] == "1.4.2"
+    assert manifest["version"] == "2.1.5+neoengine-1.4.2"
     assert manifest["plugin"]["python"] == "3.12.10"
     assert manifest["plugin"]["install_status"] == {
         "path": (
@@ -228,6 +292,30 @@ def test_neoengine_is_the_default_paddle_manifest_with_provenance():
             "cpu": "onnxruntime",
             "gpu": "onnxruntime-gpu",
         },
+    }
+    assert manifest["plugin"]["model_root"] == (
+        "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/paddlex/official_models"
+    )
+    assert manifest["plugin"]["models"] == [
+        "PP-OCRv6_medium_det_onnx",
+        "PP-OCRv6_medium_rec_onnx",
+        "PP-LCNet_x1_0_doc_ori_onnx",
+    ]
+    assert manifest["plugin"]["launcher"] == {
+        "path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/run.cmd",
+        "encoding": "utf-8",
+        "environment": ["PYTHONUTF8=1", "PYTHONIOENCODING=utf-8"],
+        "python_candidates": {
+            "cpu": [".venv/python.exe", ".venv/Scripts/python.exe"],
+            "gpu": [".venv_gpu/python.exe", ".venv_gpu/Scripts/python.exe"],
+        },
+    }
+    assert manifest["plugin"]["ocr_pipe"] == {
+        "client_path": "UmiOCR-data/plugins/win_x64_PaddleOCR_Py/PPOCR_api.py",
+        "framing": "json-lines",
+        "response_boundary": "first-valid-json",
+        "stdout_noise": "log-and-continue",
+        "noise_log": "engine_stderr.log",
     }
     assert manifest["backend"] == "onnxruntime"
     assert any(
@@ -262,6 +350,247 @@ def test_neoengine_environment_verifier_accepts_pinned_cpu_setup(
 
     assert verify_umiocr_runtime.verify_plugin_environment(root, manifest) == []
     assert plugin_root.is_dir()
+
+
+def test_neoengine_environment_verifier_accepts_portable_cpu_setup(
+    monkeypatch, tmp_path
+):
+    _neoengine_environment_root(tmp_path, portable=True)
+    manifest = runtime.load_umiocr_manifest("paddle")
+
+    class Result:
+        returncode = 0
+        stdout = (
+            '__OCR_FLOW_ENV__{"python_version":"3.12.10",'
+            '"paddle":"3.2.1","paddleocr":"3.7.0",'
+            '"onnxruntime":"1.26.0",'
+            '"providers":["CPUExecutionProvider"]}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        verify_umiocr_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    failures, observations = verify_umiocr_runtime.probe_plugin_environment(
+        tmp_path, manifest
+    )
+
+    assert failures == []
+    assert observations["python"].endswith(".venv\\python.exe") or observations[
+        "python"
+    ].endswith(".venv/python.exe")
+
+
+def test_neoengine_manifest_contract_rejects_hash_provenance_drift():
+    manifest = runtime.load_umiocr_manifest("paddle")
+    manifest["plugin"]["static_files_commit"] = "e1acb9d22a8b4f343cd0c6d18dec694d809d02e7"
+
+    assert verify_umiocr_runtime.verify_manifest_contract(manifest) == [
+        "NeoEngine manifest static file hashes are not bound to plugin.commit"
+    ]
+
+
+def test_neoengine_manifest_contract_rejects_missing_or_invalid_provenance():
+    manifest = runtime.load_umiocr_manifest("paddle")
+    manifest["plugin"].pop("source_url")
+    manifest["plugin"].pop("commit")
+    manifest["plugin"].pop("static_files_commit")
+
+    failures = verify_umiocr_runtime.verify_manifest_contract(manifest)
+
+    assert "NeoEngine manifest has no canonical HTTPS source URL" in failures
+    assert "NeoEngine manifest has no valid full plugin.commit" in failures
+    assert (
+        "NeoEngine manifest static file hashes are not bound to plugin.commit"
+        in failures
+    )
+
+
+def test_neoengine_manifest_contract_rejects_noncanonical_source_and_short_commit():
+    manifest = runtime.load_umiocr_manifest("paddle")
+    manifest["plugin"]["source_url"] = "git@github.com:chapterv/umi-paddle-neoengine.git"
+    manifest["plugin"]["commit"] = "6a87fc4"
+    manifest["plugin"]["static_files_commit"] = "6a87fc4"
+
+    failures = verify_umiocr_runtime.verify_manifest_contract(manifest)
+
+    assert failures[:2] == [
+        "NeoEngine manifest has no canonical HTTPS source URL",
+        "NeoEngine manifest has no valid full plugin.commit",
+    ]
+
+
+def test_neoengine_manifest_contract_rejects_unverified_recovery_boundary():
+    manifest = runtime.load_umiocr_manifest("paddle")
+    manifest["plugin"]["ocr_pipe"]["response_boundary"] = "single-line"
+
+    assert (
+        "NeoEngine OCR pipe does not recover at the first valid JSON"
+        in verify_umiocr_runtime.verify_manifest_contract(manifest)
+    )
+
+
+def test_neoengine_environment_verifier_rejects_model_path_escape(
+    monkeypatch, tmp_path
+):
+    _neoengine_environment_root(tmp_path)
+    manifest = runtime.load_umiocr_manifest("paddle")
+    manifest["plugin"]["models"] = ["../outside-model"]
+
+    class Result:
+        returncode = 0
+        stdout = (
+            '__OCR_FLOW_ENV__{"python_version":"3.12.10",'
+            '"paddle":"3.2.1","paddleocr":"3.7.0",'
+            '"onnxruntime":"1.26.0","providers":["CPUExecutionProvider"]}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        verify_umiocr_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    failures = verify_umiocr_runtime.verify_plugin_environment(tmp_path, manifest)
+
+    assert failures == [
+        "NeoEngine model path escapes the model root: ../outside-model"
+    ]
+
+
+def test_neoengine_environment_verifier_rejects_install_status_path_escape(
+    monkeypatch, tmp_path
+):
+    _neoengine_environment_root(tmp_path)
+    manifest = runtime.load_umiocr_manifest("paddle")
+    manifest["plugin"]["install_status"]["path"] = "../outside-status.json"
+
+    class Result:
+        returncode = 0
+        stdout = (
+            '__OCR_FLOW_ENV__{"python_version":"3.12.10",'
+            '"paddle":"3.2.1","paddleocr":"3.7.0",'
+            '"onnxruntime":"1.26.0","providers":["CPUExecutionProvider"]}'
+        )
+        stderr = ""
+
+    monkeypatch.setattr(
+        verify_umiocr_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: Result(),
+    )
+
+    failures = verify_umiocr_runtime.verify_plugin_environment(tmp_path, manifest)
+
+    assert failures == ["NeoEngine install-status path escapes the runtime root"]
+
+
+def test_neoengine_pipe_recovery_probe_executes_first_valid_json_contract(
+    monkeypatch, tmp_path
+):
+    client = (
+        tmp_path
+        / "UmiOCR-data"
+        / "plugins"
+        / "win_x64_PaddleOCR_Py"
+        / "PPOCR_api.py"
+    )
+    client.parent.mkdir(parents=True)
+    client.write_text(
+        "import json\n"
+        "class PPOCR_pipe:\n"
+        "    def runDict(self, value):\n"
+        "        while True:\n"
+        "            line = self._read_line(1)\n"
+        "            try:\n"
+        "                return json.loads(line)\n"
+        "            except Exception:\n"
+        "                self._stderr_fd.write(\n"
+        "                    '[stdout-noise] ' + line.strip() + '\\\\n'\n"
+        "                )\n",
+        encoding="utf-8",
+    )
+    manifest = runtime.load_umiocr_manifest("paddle")
+    client_bytes = client.read_bytes()
+    trusted = {
+        "path": manifest["plugin"]["ocr_pipe"]["client_path"],
+        "bytes": len(client_bytes),
+        "sha256": hashlib.sha256(client_bytes).hexdigest().upper(),
+    }
+    client_entry = next(
+        entry for entry in manifest["files"] if entry["path"] == trusted["path"]
+    )
+    client_entry.update(bytes=trusted["bytes"], sha256=trusted["sha256"])
+    monkeypatch.setattr(
+        verify_umiocr_runtime,
+        "_trusted_pipe_client_contract",
+        lambda: trusted,
+    )
+
+    marker = tmp_path / "sitecustomize-executed.txt"
+    (tmp_path / "sitecustomize.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    commands = []
+    real_run = verify_umiocr_runtime.subprocess.run
+
+    def isolated_run(command, **kwargs):
+        commands.append((command, kwargs))
+        return real_run(command, **kwargs)
+
+    monkeypatch.setattr(
+        verify_umiocr_runtime.subprocess,
+        "run",
+        isolated_run,
+    )
+
+    failures, observations = verify_umiocr_runtime.verify_ocr_pipe_recovery(
+        tmp_path, manifest
+    )
+
+    assert failures == []
+    assert observations == {
+        "first_valid_json": True,
+        "stdout_noise_logged": True,
+    }
+    assert commands[0][0][1:3] == ["-I", "-c"]
+    assert commands[0][1]["cwd"] == verify_umiocr_runtime.PROJECT_ROOT
+    assert not marker.exists()
+
+
+def test_neoengine_pipe_recovery_rejects_unpinned_client_before_execution(tmp_path):
+    marker = tmp_path / "executed.txt"
+    client = (
+        tmp_path
+        / "UmiOCR-data"
+        / "plugins"
+        / "win_x64_PaddleOCR_Py"
+        / "PPOCR_api.py"
+    )
+    client.parent.mkdir(parents=True)
+    client.write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n"
+        "class PPOCR_pipe:\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    manifest = runtime.load_umiocr_manifest("paddle")
+
+    failures, observations = verify_umiocr_runtime.verify_ocr_pipe_recovery(
+        tmp_path, manifest
+    )
+
+    assert failures == ["NeoEngine OCR pipe client changed before recovery probe"]
+    assert observations == {}
+    assert not marker.exists()
 
 
 def test_neoengine_environment_verifier_rejects_python_version_drift(
@@ -309,6 +638,11 @@ def test_neoengine_environment_verifier_rejects_incomplete_manifest(tmp_path):
         "NeoEngine manifest has no plugin.dependencies.paddleocr version",
         "NeoEngine manifest has no plugin.dependencies.onnxruntime version",
         "NeoEngine manifest has no valid plugin.models list",
+        "NeoEngine manifest has no plugin.model_root path",
+        "NeoEngine manifest has no plugin.launcher contract",
+        "NeoEngine launcher has no python_candidates map",
+        "NeoEngine launcher has no valid cpu Python candidates",
+        "NeoEngine launcher has no valid gpu Python candidates",
         "NeoEngine manifest has no install-status path",
         "NeoEngine manifest has no valid install-status backends",
         "NeoEngine manifest has no install-status required_status value",
@@ -414,7 +748,7 @@ def test_neoengine_environment_verifier_fails_when_model_cache_is_missing(
         plugin_root
         / "paddlex"
         / "official_models"
-        / "PP-OCRv6_medium_rec_onnx"
+        / "PP-LCNet_x1_0_doc_ori_onnx"
         / "inference.onnx"
     ).unlink()
     manifest = runtime.load_umiocr_manifest("paddle")
@@ -438,7 +772,7 @@ def test_neoengine_environment_verifier_fails_when_model_cache_is_missing(
     failures = verify_umiocr_runtime.verify_plugin_environment(root, manifest)
 
     assert failures == [
-        "Missing cached NeoEngine model: PP-OCRv6_medium_rec_onnx"
+        "Missing cached NeoEngine model: PP-LCNet_x1_0_doc_ori_onnx"
     ]
 
 

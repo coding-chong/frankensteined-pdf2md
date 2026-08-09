@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+NEOENGINE_SOURCE_URL = "https://github.com/chapterv/umi-paddle-neoengine.git"
+FULL_GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _default_manifest_path(engine: str = "paddle") -> Path:
@@ -41,19 +44,127 @@ def sha256(path: Path) -> str:
     return digest.hexdigest().upper()
 
 
+def _plugin_root(root: Path) -> Path:
+    return root / "UmiOCR-data" / "plugins" / "win_x64_PaddleOCR_Py"
+
+
+def _contract_path(root: Path, relative_path: str) -> Optional[Path]:
+    """Resolve a manifest-owned relative path without allowing path escape."""
+    candidate = (root / Path(relative_path.replace("/", os.sep))).resolve()
+    try:
+        candidate.relative_to(root.resolve())
+    except ValueError:
+        return None
+    return candidate
+
+
+def verify_manifest_contract(manifest: Dict[str, Any]) -> List[str]:
+    """Validate the portable-launcher and pipe-recovery manifest boundary."""
+    plugin = manifest.get("plugin")
+    if not isinstance(plugin, dict):
+        if manifest.get("engine") == "paddle":
+            return ["Paddle runtime manifest has no plugin contract"]
+        return []
+
+    failures = []
+    source_url = plugin.get("source_url")
+    if source_url != NEOENGINE_SOURCE_URL:
+        failures.append("NeoEngine manifest has no canonical HTTPS source URL")
+    commit = plugin.get("commit")
+    if not isinstance(commit, str) or FULL_GIT_COMMIT.fullmatch(commit) is None:
+        failures.append("NeoEngine manifest has no valid full plugin.commit")
+    if not isinstance(plugin.get("static_files_commit"), str) or (
+        plugin.get("static_files_commit") != commit
+    ):
+        failures.append(
+            "NeoEngine manifest static file hashes are not bound to plugin.commit"
+        )
+
+    model_root = plugin.get("model_root")
+    if not isinstance(model_root, str) or not model_root:
+        failures.append("NeoEngine manifest has no plugin.model_root path")
+    elif _contract_path(Path("."), model_root) is None:
+        failures.append("NeoEngine manifest plugin.model_root escapes the runtime root")
+
+    launcher = plugin.get("launcher")
+    if not isinstance(launcher, dict):
+        failures.append("NeoEngine manifest has no plugin.launcher contract")
+        launcher = {}
+    launcher_path = launcher.get("path")
+    if not isinstance(launcher_path, str) or not launcher_path:
+        failures.append("NeoEngine manifest has no launcher path")
+    if launcher.get("encoding") != "utf-8":
+        failures.append("NeoEngine launcher is not declared UTF-8 safe")
+    if launcher.get("environment") != [
+        "PYTHONUTF8=1",
+        "PYTHONIOENCODING=utf-8",
+    ]:
+        failures.append("NeoEngine launcher has no UTF-8 environment contract")
+    python_candidates = launcher.get("python_candidates")
+    if not isinstance(python_candidates, dict):
+        failures.append("NeoEngine launcher has no python_candidates map")
+        python_candidates = {}
+    for mode in ("cpu", "gpu"):
+        candidates = python_candidates.get(mode)
+        if (
+            not isinstance(candidates, list)
+            or not candidates
+            or not all(isinstance(item, str) and item for item in candidates)
+        ):
+            failures.append(
+                f"NeoEngine launcher has no valid {mode} Python candidates"
+            )
+
+    protocol = plugin.get("ocr_pipe")
+    if not isinstance(protocol, dict):
+        failures.append("NeoEngine manifest has no plugin.ocr_pipe contract")
+        protocol = {}
+    if protocol.get("framing") != "json-lines":
+        failures.append("NeoEngine OCR pipe framing is not json-lines")
+    if protocol.get("response_boundary") != "first-valid-json":
+        failures.append("NeoEngine OCR pipe does not recover at the first valid JSON")
+    if protocol.get("stdout_noise") != "log-and-continue":
+        failures.append("NeoEngine OCR pipe does not tolerate stdout noise")
+    noise_log = protocol.get("noise_log")
+    if not isinstance(noise_log, str) or not noise_log:
+        failures.append("NeoEngine OCR pipe has no noise log path")
+    elif _contract_path(_plugin_root(Path(".")), noise_log) is None:
+        failures.append("NeoEngine OCR pipe noise log escapes the plugin root")
+
+    static_paths = {
+        entry.get("path")
+        for entry in manifest.get("files", [])
+        if isinstance(entry, dict)
+    }
+    for label, path in (
+        ("launcher", launcher_path),
+        ("OCR pipe client", protocol.get("client_path")),
+    ):
+        if not isinstance(path, str) or path not in static_paths:
+            failures.append(f"NeoEngine {label} is not covered by static verification")
+    return failures
+
+
 def verify_runtime(root: Path, manifest: Dict[str, Any]) -> List[str]:
     """Return human-readable verification failures for a runtime root."""
-    failures = []
+    failures = verify_manifest_contract(manifest)
     for expected in manifest["files"]:
-        target = root / expected["path"]
+        relative_path = expected.get("path") if isinstance(expected, dict) else None
+        if not isinstance(relative_path, str) or not relative_path:
+            failures.append("UMI OCR manifest contains a file without a valid path")
+            continue
+        target = _contract_path(root, relative_path)
+        if target is None:
+            failures.append(f"Manifest file path escapes the runtime root: {relative_path}")
+            continue
         if not target.is_file():
-            failures.append(f"Missing {expected['path']}")
+            failures.append(f"Missing {relative_path}")
             continue
         if target.stat().st_size != expected["bytes"]:
-            failures.append(f"Size mismatch for {expected['path']}")
+            failures.append(f"Size mismatch for {relative_path}")
             continue
         if sha256(target) != expected["sha256"]:
-            failures.append(f"SHA-256 mismatch for {expected['path']}")
+            failures.append(f"SHA-256 mismatch for {relative_path}")
     return failures
 
 
@@ -92,6 +203,27 @@ def probe_plugin_environment(
     ):
         contract_failures.append("NeoEngine manifest has no valid plugin.models list")
         expected_models = []
+    model_root_relative = plugin.get("model_root")
+    if not isinstance(model_root_relative, str) or not model_root_relative:
+        contract_failures.append("NeoEngine manifest has no plugin.model_root path")
+    launcher = plugin.get("launcher")
+    if not isinstance(launcher, dict):
+        contract_failures.append("NeoEngine manifest has no plugin.launcher contract")
+        launcher = {}
+    python_candidates_by_mode = launcher.get("python_candidates")
+    if not isinstance(python_candidates_by_mode, dict):
+        contract_failures.append("NeoEngine launcher has no python_candidates map")
+        python_candidates_by_mode = {}
+    for mode in ("cpu", "gpu"):
+        candidates = python_candidates_by_mode.get(mode)
+        if (
+            not isinstance(candidates, list)
+            or not candidates
+            or not all(isinstance(item, str) and item for item in candidates)
+        ):
+            contract_failures.append(
+                f"NeoEngine launcher has no valid {mode} Python candidates"
+            )
     install_status_contract = plugin.get("install_status")
     if not isinstance(install_status_contract, dict):
         contract_failures.append("NeoEngine manifest has no plugin.install_status contract")
@@ -114,11 +246,23 @@ def probe_plugin_environment(
     if contract_failures:
         return contract_failures, {}
 
-    plugin_root = root / "UmiOCR-data" / "plugins" / "win_x64_PaddleOCR_Py"
+    plugin_root = _plugin_root(root)
     environment_name = ".venv_gpu" if provider_mode == "gpu" else ".venv"
-    python_candidates = (plugin_root / environment_name / "Scripts" / "python.exe",)
+    candidate_paths = python_candidates_by_mode.get(provider_mode, [])
+    python_candidates = tuple(
+        _contract_path(plugin_root, candidate)
+        for candidate in candidate_paths
+    )
+    if any(candidate is None for candidate in python_candidates):
+        return [
+            f"NeoEngine {provider_mode} Python candidate escapes the plugin root"
+        ], {
+            "provider_mode": provider_mode,
+            "python": None,
+            "providers": [],
+        }
     python_path = next(
-        (candidate for candidate in python_candidates if candidate.is_file()),
+        (candidate for candidate in python_candidates if candidate and candidate.is_file()),
         None,
     )
     if python_path is None:
@@ -230,18 +374,21 @@ def probe_plugin_environment(
             f"{providers}"
         )
 
-    for model in expected_models:
-        model_file = (
-            plugin_root
-            / "paddlex"
-            / "official_models"
-            / model
-            / "inference.onnx"
-        )
-        if not model_file.is_file() or model_file.stat().st_size == 0:
-            failures.append(f"Missing cached NeoEngine model: {model}")
+    model_root = _contract_path(root, model_root_relative)
+    if model_root is None:
+        failures.append("NeoEngine model root escapes the runtime root")
+    else:
+        for model in expected_models:
+            model_file = _contract_path(model_root, f"{model}/inference.onnx")
+            if model_file is None:
+                failures.append(f"NeoEngine model path escapes the model root: {model}")
+            elif not model_file.is_file() or model_file.stat().st_size == 0:
+                failures.append(f"Missing cached NeoEngine model: {model}")
 
-    status_path = root / status_relative_path
+    status_path = _contract_path(root, status_relative_path)
+    if status_path is None:
+        failures.append("NeoEngine install-status path escapes the runtime root")
+        return failures, observations
     if not status_path.is_file():
         failures.append(
             "NeoEngine install status is missing: "
@@ -305,6 +452,139 @@ def probe_plugin_environment(
     return failures, observations
 
 
+def _trusted_pipe_client_contract() -> Dict[str, Any]:
+    """Return the package-owned pipe client path and immutable file identity."""
+    trusted_manifest = load_manifest(DEFAULT_MANIFEST)
+    trusted_plugin = trusted_manifest.get("plugin", {})
+    trusted_protocol = trusted_plugin.get("ocr_pipe", {})
+    trusted_path = trusted_protocol.get("client_path")
+    matches = [
+        entry
+        for entry in trusted_manifest.get("files", [])
+        if isinstance(entry, dict) and entry.get("path") == trusted_path
+    ]
+    if not isinstance(trusted_path, str) or len(matches) != 1:
+        raise RuntimeError("Package-owned NeoEngine pipe client contract is invalid")
+    entry = matches[0]
+    return {
+        "path": trusted_path,
+        "bytes": entry.get("bytes"),
+        "sha256": entry.get("sha256"),
+    }
+
+
+_PIPE_RECOVERY_PROBE = r'''
+import importlib.util
+import io
+import json
+import sys
+
+client_path = sys.argv[1]
+spec = importlib.util.spec_from_file_location("ocr_flow_verified_neoengine_pipe", client_path)
+if spec is None or spec.loader is None:
+    raise ImportError("could not create a module specification")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+pipe = module.PPOCR_pipe.__new__(module.PPOCR_pipe)
+
+class Process:
+    def __init__(self):
+        self.stdin = io.BytesIO()
+
+    @staticmethod
+    def poll():
+        return None
+
+pipe.ret = Process()
+pipe._stderr_fd = io.StringIO()
+responses = iter(["<Response [404]>\n", '{"code":100,"data":[]}\n'])
+pipe._read_line = lambda _timeout: next(responses, "")
+result = pipe.runDict({"image_path": "contract-probe.png"})
+noise_log = pipe._stderr_fd.getvalue()
+pipe.ret = None
+print("__OCR_FLOW_PIPE__" + json.dumps({
+    "first_valid_json": result == {"code": 100, "data": []},
+    "stdout_noise_logged": "[stdout-noise] <Response [404]>" in noise_log,
+}, sort_keys=True))
+'''
+
+
+def verify_ocr_pipe_recovery(
+    root: Path, manifest: Dict[str, Any]
+) -> Tuple[List[str], Dict[str, Any]]:
+    """Execute only the package-pinned pipe client in an isolated subprocess."""
+    plugin = manifest.get("plugin")
+    if not isinstance(plugin, dict):
+        return [], {}
+    protocol = plugin.get("ocr_pipe")
+    client_relative = protocol.get("client_path") if isinstance(protocol, dict) else None
+    if not isinstance(client_relative, str) or not client_relative:
+        return ["NeoEngine manifest has no OCR pipe client path"], {}
+    client_path = _contract_path(root, client_relative)
+    if client_path is None:
+        return ["NeoEngine OCR pipe client escapes the runtime root"], {}
+    if not client_path.is_file():
+        return [f"NeoEngine OCR pipe client is missing: {client_relative}"], {}
+
+    try:
+        trusted = _trusted_pipe_client_contract()
+    except (OSError, ValueError, RuntimeError) as error:
+        return [f"NeoEngine trusted OCR pipe contract is unavailable: {error}"], {}
+    manifest_entries = [
+        entry
+        for entry in manifest.get("files", [])
+        if isinstance(entry, dict) and entry.get("path") == client_relative
+    ]
+    if (
+        client_relative != trusted["path"]
+        or len(manifest_entries) != 1
+        or manifest_entries[0].get("bytes") != trusted["bytes"]
+        or manifest_entries[0].get("sha256") != trusted["sha256"]
+    ):
+        return ["NeoEngine OCR pipe client is not package-pinned"], {}
+    if (
+        client_path.stat().st_size != trusted["bytes"]
+        or sha256(client_path) != trusted["sha256"]
+    ):
+        return ["NeoEngine OCR pipe client changed before recovery probe"], {}
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-I", "-c", _PIPE_RECOVERY_PROBE, str(client_path)],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return ["NeoEngine OCR pipe recovery probe timed out"], {}
+    if result.returncode:
+        detail = (result.stderr or result.stdout).strip().splitlines()[-1:]
+        return [f"NeoEngine OCR pipe recovery probe failed: {' '.join(detail)}"], {}
+    marker = next(
+        (
+            line
+            for line in result.stdout.splitlines()
+            if line.startswith("__OCR_FLOW_PIPE__")
+        ),
+        None,
+    )
+    if marker is None:
+        return ["NeoEngine OCR pipe recovery probe returned no result"], {}
+    try:
+        observations = json.loads(marker[len("__OCR_FLOW_PIPE__") :])
+    except json.JSONDecodeError as error:
+        return [f"NeoEngine OCR pipe recovery probe returned invalid JSON: {error}"], {}
+
+    failures = []
+    if observations.get("first_valid_json") is not True:
+        failures.append("NeoEngine OCR pipe did not return the first valid JSON response")
+    if observations.get("stdout_noise_logged") is not True:
+        failures.append("NeoEngine OCR pipe did not redirect non-JSON stdout noise")
+    return failures, observations
+
+
 def verify_plugin_environment(
     root: Path,
     manifest: Dict[str, Any],
@@ -353,6 +633,12 @@ def main() -> int:
             root, manifest, args.provider_mode
         )
         failures.extend(environment_failures)
+        if not environment_failures:
+            pipe_failures, pipe_observations = verify_ocr_pipe_recovery(
+                root, manifest
+            )
+            failures.extend(pipe_failures)
+            observations["ocr_pipe_recovery"] = pipe_observations
     if args.report:
         plugin = manifest.get("plugin") if isinstance(manifest, dict) else None
         _write_report(

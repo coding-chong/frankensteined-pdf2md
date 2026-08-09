@@ -54,7 +54,7 @@ Windows 新机的完整安装顺序、Paddle OCR V6 插件环境与模型准备�
 | Git for Windows | [git-for-windows/git](https://github.com/git-for-windows/git) | clone 和版本控制。 |
 | uv | [astral-sh/uv](https://github.com/astral-sh/uv) | 安装锁定的 Python 与项目依赖。 |
 | CPython | [python/cpython](https://github.com/python/cpython) | 由 uv 管理；本项目固定 3.13.12。 |
-| Umi-OCR | [hiroi-sora/Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) 的 [v2.1.5 Release](https://github.com/hiroi-sora/Umi-OCR/releases/tag/v2.1.5)；Paddle plugin 使用 [chapterv/umi-paddle-neoengine](https://github.com/chapterv/umi-paddle-neoengine) 1.4 | 扫描 PDF 的本地 OCR。默认 Paddle OCR V6 profile 使用 plugin-local Python 3.12.10、PaddlePaddle 3.2.1、PaddleOCR 3.7.0 和 ONNX Runtime 1.26.0 的 CPU backend；Rapid 是独立可选引擎。 |
+| Umi-OCR | [hiroi-sora/Umi-OCR](https://github.com/hiroi-sora/Umi-OCR) 的 [v2.1.5 Release](https://github.com/hiroi-sora/Umi-OCR/releases/tag/v2.1.5)；Paddle plugin 使用 [chapterv/umi-paddle-neoengine](https://github.com/chapterv/umi-paddle-neoengine) 1.4.2 | 扫描 PDF 的本地 OCR。默认 Paddle OCR V6 profile 使用 plugin-local Python 3.12.10、PaddlePaddle 3.2.1、PaddleOCR 3.7.0 和 ONNX Runtime 1.26.0 的 CPU backend；Rapid 是独立可选引擎。 |
 | Ghostscript | [ArtifexSoftware/ghostpdl](https://github.com/ArtifexSoftware/ghostpdl)；[官方 Windows 下载页](https://ghostscript.com/releases/gsdnld.html) | 所有不翻译流程，以及带 `--compress` 的翻译流程。 |
 | BabelDOC | [funstory-ai/BabelDOC](https://github.com/funstory-ai/BabelDOC) | 翻译时由本仓库管理固定的 v0.6.3 / `28f784ca6b437dbba040bfd9c67110373cd0924b` runtime。 |
 | MinerU | [opendatalab/MinerU](https://github.com/opendatalab/MinerU)；[官方平台](https://mineru.net/) | 每次 `process` 的 Markdown 结构化转换与 token 来源。 |
@@ -141,13 +141,14 @@ uv run --locked --extra windows ocr-flow doctor
 按 [Windows 新机与 OCR V6 安装](docs/fresh-clone-setup.md#21-安装-paddle-neoengine-ocr-v6默认-cpu-路径)
 取得官方 `Umi-OCR_Paddle_v2.1.5.7z.exe`，并在
 `UmiOCR-data/plugins/win_x64_PaddleOCR_Py` 安装
-[umi-paddle-neoengine](https://github.com/chapterv/umi-paddle-neoengine) 1.4。该指南包含
-固定源码检出、插件 `.venv`、依赖、模型、安装状态、回滚和故障重跑命令。
-固定 commit 为 `e1acb9d22a8b4f343cd0c6d18dec694d809d02e7`，plugin-local 环境必须是
+[umi-paddle-neoengine](https://github.com/chapterv/umi-paddle-neoengine) 1.4.2。该指南包含
+固定源码检出、UTF-8 launcher、插件 `.venv`、依赖、模型、安装状态、回滚和故障重跑命令。
+固定 commit 为 `6a87fc4145a13b09104836cb22cf05125b143041`，plugin-local 环境必须是
 Python 3.12.10、PaddlePaddle 3.2.1、PaddleOCR 3.7.0 和 ONNX Runtime 1.26.0，
-并缓存 `PP-OCRv6_medium_det_onnx` 与 `PP-OCRv6_medium_rec_onnx`。配置向导中
+并在插件自己的 PaddleX cache 中保存 `PP-OCRv6_medium_det_onnx`、
+`PP-OCRv6_medium_rec_onnx` 与 `PP-LCNet_x1_0_doc_ori_onnx`。配置向导中
 保持或选择 `engine = "paddle"`，然后验证静态文件、全部依赖、ONNX
-`CPUExecutionProvider` 和两个 OCR V6 模型：
+`CPUExecutionProvider` 和三个 OCR V6/方向模型：
 
 ~~~powershell
 $umiRoot = "C:\Tools\Umi-OCR_Paddle_v2.1.5"
@@ -157,7 +158,10 @@ uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --
 ~~~
 
 第一条命令生成 Umi 主程序实际读取的 `install_status.json`。后续 verifier 仍会
-独立检查依赖版本、provider 与非空模型文件，所以状态值不能替代真实安装。
+独立检查依赖版本、provider 与三个非空模型文件，所以状态值不能替代真实安装。
+`run.cmd` 必须保持 v1.4.2 的 UTF-8 环境和便携布局探测；OCR 管道遇到模型下载器的
+非 JSON stdout 诊断时会记录并继续等待第一条合法 JSON，而不是把 404 诊断报告为
+Umi 904。真实 layered-PDF smoke 才能证明该恢复路径可用。
 
 GPU 仅是显式可选加速：使用独立 `.venv_gpu` 并把两条命令的 provider 改为
 `--provider-mode gpu`。只有校验器看到 `CUDAExecutionProvider`、GPU device，且真实

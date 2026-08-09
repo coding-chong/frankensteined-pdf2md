@@ -47,7 +47,7 @@ uv run --locked --extra windows ocr-flow --help
 | 锁定 Python 包 | 所有工作流 | 仓库内 uv.lock；Windows extra 包含 pythonnet 3.0.5。 | checkout 下 .venv，已被 Git 忽略 | uv lock --check 和 uv sync --locked --extra windows --dry-run | 删除本地 .venv 后重新执行 uv sync --locked；不要手工 uv pip install 覆盖锁。 |
 | pythonnet 和 .NET | Windows MinerU ZIP 回退链 | pythonnet 3.0.5 由 windows extra 锁定；已验证 .NET Desktop Runtime 8.0.3。 | Python 环境和 Windows .NET 运行时 | uv run --locked --extra windows python -c "import clr; from System.Net import WebClient; print('pythonnet/.NET ready')" | 仅当该命令失败时安装 Microsoft x64 .NET Desktop Runtime LTS，重开终端后重跑。 |
 | Ghostscript | 所有不翻译流程；显式 `--compress` 的翻译流程；完整矩阵 | 从 Artifex Ghostscript 官方下载页获取 Windows x64。当前发现基线 10.03.0；10.07.1 曾通过真实压缩兼容性验证。 | PATH，或 config 的 compress.ghostscript_path | uv run --locked --extra windows ocr-flow doctor | 提供真实 gswin64c.exe 的绝对路径；下载或签名成功不等于兼容，须做后述压缩 smoke。 |
-| Umi-OCR Paddle + NeoEngine | 默认 Paddle OCR V6 扫描 OCR | Umi-OCR v2.1.5 配合 `chapterv/umi-paddle-neoengine` 1.4，固定 commit `e1acb9d22a8b4f343cd0c6d18dec694d809d02e7`；plugin-local Python 3.12.10、PaddlePaddle 3.2.1、PaddleOCR 3.7.0、ONNX Runtime 1.26.0。 | `UmiOCR-data/plugins/win_x64_PaddleOCR_Py` 的 `.venv`，以及 `PP-OCRv6_medium_det_onnx` 与 `PP-OCRv6_medium_rec_onnx` model cache | `verify_umiocr_runtime.py --engine paddle --check-environment --provider-mode cpu`，随后运行带同一 provider 的 layered-PDF validator | 保留旧 `win7_x64_PaddleOCR-json` plugin 和 Umi settings 的 rollback copy；不要用全局 Python 覆盖 plugin-local environment。 |
+| Umi-OCR Paddle + NeoEngine | 默认 Paddle OCR V6 扫描 OCR | Umi-OCR v2.1.5 配合 `chapterv/umi-paddle-neoengine` 1.4.2，固定 commit `6a87fc4145a13b09104836cb22cf05125b143041`；plugin-local Python 3.12.10、PaddlePaddle 3.2.1、PaddleOCR 3.7.0、ONNX Runtime 1.26.0。 | `UmiOCR-data/plugins/win_x64_PaddleOCR_Py` 的 `.venv`，以及 package-local `PP-OCRv6_medium_det_onnx`、`PP-OCRv6_medium_rec_onnx` 与 `PP-LCNet_x1_0_doc_ori_onnx` model cache | `verify_umiocr_runtime.py --engine paddle --check-environment --provider-mode cpu`，随后运行带同一 provider 的 layered-PDF validator | 保留旧 `win7_x64_PaddleOCR-json` plugin 和 Umi settings 的 rollback copy；不要用全局 Python 覆盖 plugin-local environment。 |
 | Umi-OCR Rapid | 扫描 PDF、CPU-only 路径、CPU/Rapid 矩阵 | 官方 GitHub release v2.1.5 的 Umi-OCR_Rapid_v2.1.5.7z.exe；不要下载 Paddle 包来代替 Rapid。 | 用户选定目录，例如 C:\Tools\Umi-OCR_Rapid_v2.1.5；config 的 umiocr.exe_path | verify_umiocr_runtime.py 加 --engine rapid，随后运行本地 layered-PDF smoke | 重新从官方 release 解压到新目录；不要提交 vendor binary；若 options 显示 Paddle model 路径，先关闭错误服务再启动 Rapid。 |
 | BabelDOC | 仅翻译 | 项目自动管理 v0.6.3，提交 28f784ca6b437dbba040bfd9c67110373cd0924b | checkout/.ocr-flow-runtime/BabelDOC，已被 Git 忽略 | runtime setup --profile cpu-safe，随后 runtime smoke | 运行 setup 重新创建项目托管目录。不要对自己的 checkout 运行 runtime setup --path，除非接受其破坏性清理。 |
 | MinerU token | 每个 process 和 live matrix；即使不翻译也需要 | 用户在 MinerU 账户中创建 token；服务版本不由 Python lock 控制 | 用户配置文件 %USERPROFILE%\.ocr-flow\config.toml 或 process 的 --config 文件 | ocr-flow doctor 只检查已配置，不提交请求 | 检查账户、额度和网络；不要把 token 放进仓库、日志或 issue。 |
@@ -92,12 +92,12 @@ if (-not (Test-Path -LiteralPath "$umiRoot\Umi-OCR.exe" -PathType Leaf)) {
 
 #### 取得固定 NeoEngine 源码并安装插件文件
 
-NeoEngine 1.4 没有可依赖的 GitHub Release 资产，因此从官方仓库检出项目 manifest
+NeoEngine 1.4.2 没有可依赖的公开 GitHub Release 资产，因此从官方仓库检出项目 manifest
 固定的 commit。`core.autocrlf=true` 是静态文件指纹契约的一部分；省略它会让 LF/CRLF
 差异导致 verifier 拒绝插件：
 
 ~~~powershell
-$neoCommit = "e1acb9d22a8b4f343cd0c6d18dec694d809d02e7"
+$neoCommit = "6a87fc4145a13b09104836cb22cf05125b143041"
 $neoRoot = Join-Path $downloadRoot "umi-paddle-neoengine"
 git clone --no-checkout https://github.com/chapterv/umi-paddle-neoengine.git $neoRoot
 git -C $neoRoot config core.autocrlf true
@@ -105,7 +105,7 @@ git -C $neoRoot checkout --detach $neoCommit
 if ((git -C $neoRoot rev-parse HEAD).Trim() -ne $neoCommit) {
   throw "Unexpected NeoEngine revision"
 }
-if ((Get-Content -LiteralPath "$neoRoot\VERSION" -Raw).Trim() -ne "1.4") {
+if ((Get-Content -LiteralPath "$neoRoot\VERSION" -Raw).Trim() -ne "1.4.2") {
   throw "Unexpected NeoEngine version"
 }
 ~~~
@@ -136,6 +136,11 @@ Copy-Item -Path "$neoRoot\win_x64_PaddleOCR_Py\*" -Destination $pluginRoot -Recu
 `.venv_gpu`，避免 `run.cmd` 优先选择错误环境。若是修复半成品安装，先完整保留新的
 rollback 目录，再从同一固定 commit 创建插件目录并重建下述 `.venv`。
 
+v1.4.2 `run.cmd` 会先启用代码页 65001、`PYTHONUTF8=1` 和
+`PYTHONIOENCODING=utf-8`，然后依次接受便携包的 `.venv\python.exe` 与常规
+`.venv\Scripts\python.exe`（GPU 目录同理）。两种布局都必须从插件目录启动并通过
+`paddleocr`/`onnxruntime` import；不要改 launcher 去依赖全局 Python。
+
 #### 创建插件环境并安装固定 CPU 依赖
 
 项目本身使用 Python 3.13.12；Umi 插件必须使用自己目录里的 Python 3.12.10，两个
@@ -156,16 +161,17 @@ uv pip install --python $pluginPython `
 于本项目锁定的 `.venv` CPU baseline；不要用它替代以上命令。也不要在全局 Python
 或本仓库 `.venv` 里手工安装这些插件依赖。
 
-#### 下载 OCR V6 medium ONNX 模型并生成安装状态
+#### 下载 OCR V6 medium ONNX 与文档方向模型并生成安装状态
 
-以下初始化只下载 Frank 默认路径需要的 medium 检测/识别模型。PaddleX 缓存被明确
-限制在插件目录，不会依赖另一台电脑用户目录中的 `~/.paddlex`：
+以下初始化只下载 Frank 默认路径需要的 medium 检测/识别模型和 v1.4.2 文档方向模型。
+PaddleX 缓存被明确限制在插件目录，不会依赖另一台电脑用户目录中的 `~/.paddlex`：
 
 ~~~powershell
 $env:PADDLE_PDX_CACHE_HOME = "$pluginRoot\paddlex"
 Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue
 Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
 @'
+from paddlex import create_predictor
 from paddleocr import PaddleOCR
 
 PaddleOCR(
@@ -179,14 +185,19 @@ PaddleOCR(
     engine="onnxruntime",
     engine_config={"providers": ["CPUExecutionProvider"]},
 )
-print("PP-OCRv6 medium ONNX models ready")
+create_predictor(
+    model_name="PP-LCNet_x1_0_doc_ori",
+    engine="onnxruntime",
+    engine_config={"providers": ["CPUExecutionProvider"]},
+)
+print("PP-OCRv6 medium and document-orientation ONNX models ready")
 '@ | & $pluginPython -
 
 & $pluginPython "$pluginRoot\install_status.py" `
   check-env --env cpu --backend onnxruntime --models ready
 ~~~
 
-成功时，下面两个文件必须非空，且 `install_status.json` 的 `envs.cpu` 必须记录
+成功时，下面三个文件必须非空，且 `install_status.json` 的 `envs.cpu` 必须记录
 `status=complete`、`backend=onnxruntime`、`python_version=3.12.10` 和
 `models=ready`：
 
@@ -194,6 +205,7 @@ print("PP-OCRv6 medium ONNX models ready")
 Get-Item `
   "$pluginRoot\paddlex\official_models\PP-OCRv6_medium_det_onnx\inference.onnx", `
   "$pluginRoot\paddlex\official_models\PP-OCRv6_medium_rec_onnx\inference.onnx", `
+  "$pluginRoot\paddlex\official_models\PP-LCNet_x1_0_doc_ori_onnx\inference.onnx", `
   "$pluginRoot\install_status.json"
 Get-Content -LiteralPath "$pluginRoot\install_status.json" -Raw
 ~~~
@@ -267,7 +279,7 @@ uv run --locked --extra windows python scripts/generate_complex_pdf_scan.py --ve
 ~~~
 
 Paddle OCR V6 必须同时通过文件指纹、plugin-local Python 与依赖、CPU provider、
-两个模型缓存和真实本地 document OCR。以下命令没有 MinerU 或翻译调用：
+三个 package-local 模型缓存和真实本地 document OCR。以下命令没有 MinerU 或翻译调用：
 
 ~~~powershell
 $umiRoot = "C:\Tools\Umi-OCR_Paddle_v2.1.5"
@@ -278,8 +290,12 @@ uv run --locked --extra windows ocr-flow doctor --ocr --start-ocr
 ~~~
 
 `install_status.py` 生成 Umi 启动入口读取的 `install_status.json`；缺少它时，即使
-直接 import 依赖成功，Umi 仍会拒绝初始化。verifier 会再独立核对版本、provider
-和实际模型文件，不能用手工状态记录替代完整安装。
+直接 import 依赖成功，Umi 仍会拒绝初始化。verifier 会再独立核对版本、provider、
+portable/常规 Python 布局和三个实际模型文件，不能用手工状态记录替代完整安装。
+静态 manifest 同时锁定 UTF-8 `run.cmd` 与 `PPOCR_api.py`：后者会把模型下载器误写到
+stdout 的非 JSON 行转存到 `engine_stderr.log`，并继续等待第一条合法 JSON。layered-PDF
+smoke 必须实际完成且不得出现首次运行的 404/904 协议失败；只通过静态 hash 不等于
+该运行时恢复路径已经通过。
 
 必须从 checkout 根目录运行上述 `uv run` 命令。ocr-flow 启动 Umi 时会移除调用方
 的 `PYTHONHOME` 与 `PYTHONPATH`，避免项目 Python 3.13 污染 plugin Python 3.12.10。

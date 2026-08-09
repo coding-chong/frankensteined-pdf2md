@@ -28,7 +28,7 @@ RUNTIME_ROOT = PROJECT_ROOT / ".ocr-flow-runtime"
 MANAGED_BABELDOC_PATH = RUNTIME_ROOT / "BabelDOC"
 MANAGED_RUNTIME_STATE_PATH = RUNTIME_ROOT / "babeldoc-runtime-state.json"
 DEFAULT_BABELDOC_MANIFEST = PROFILE_ROOT / "babeldoc-v0.6.3.json"
-DEFAULT_UMIOCR_MANIFEST = PROFILE_ROOT / "umiocr-paddle-neoengine-v1.4.json"
+DEFAULT_UMIOCR_MANIFEST = PROFILE_ROOT / "umiocr-paddle-neoengine-v1.4.2.json"
 LEGACY_UMIOCR_MANIFEST = PROFILE_ROOT / "umiocr-paddle-v2.1.5.json"
 UMIOCR_MANIFESTS = {
     "paddle": DEFAULT_UMIOCR_MANIFEST,

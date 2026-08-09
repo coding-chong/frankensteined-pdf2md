@@ -40,6 +40,64 @@ class MinerUClient:
         except FileNotFoundError:
             pass
 
+    @staticmethod
+    def _validate_merge_tree(source_dir: Path, output_dir: Path) -> None:
+        """Reject unsafe or incompatible entries before moving any result."""
+        for source in source_dir.iterdir():
+            destination = output_dir / source.name
+            if source.is_symlink() or destination.is_symlink():
+                raise RuntimeError(
+                    f"MinerU archive merge rejects symbolic links: {source.name}"
+                )
+            if destination.exists() and (
+                source.is_dir() != destination.is_dir()
+            ):
+                raise RuntimeError(
+                    f"MinerU archive merge type collision: {source.name}"
+                )
+            if source.is_dir():
+                MinerUClient._validate_merge_tree(source, destination)
+
+    @staticmethod
+    def _merge_extracted_tree(source_dir: Path, output_dir: Path) -> None:
+        """Move a prevalidated extraction tree into the durable result directory."""
+        output_dir.mkdir(parents=True, exist_ok=True)
+        children = sorted(
+            source_dir.iterdir(),
+            key=lambda path: (path.suffix.lower() != ".md", path.name),
+        )
+        for source in children:
+            destination = output_dir / source.name
+            if source.is_dir() and destination.is_dir():
+                MinerUClient._merge_extracted_tree(source, destination)
+                source.rmdir()
+            elif source.is_dir():
+                shutil.move(str(source), str(destination))
+            else:
+                os.replace(source, destination)
+
+    @staticmethod
+    def _extract_archive(archive_path: str, output_dir: Path) -> None:
+        """Extract on a short same-volume path before moving durable results.
+
+        Live matrix paths can exceed legacy Win32 path limits once MinerU adds
+        UUID directories. Extracting directly into that tree can fail after
+        only part of the ZIP is present. A same-volume staging directory keeps
+        extraction paths short, then directory moves preserve deep descendants
+        without recreating every long path.
+        """
+        output_dir = output_dir.resolve()
+        parents = list(output_dir.parents)
+        staging_parent = parents[-3] if len(parents) >= 3 else parents[-1]
+        with tempfile.TemporaryDirectory(
+            prefix=".ocr-flow-mineru-", dir=staging_parent
+        ) as staging_value:
+            staging_dir = output_dir.__class__(staging_value)
+            with zipfile.ZipFile(archive_path, "r") as archive:
+                archive.extractall(staging_dir)
+            MinerUClient._validate_merge_tree(staging_dir, output_dir)
+            MinerUClient._merge_extracted_tree(staging_dir, output_dir)
+
     def __init__(self, config, logger=None):
         """Initialize client with config."""
         self.token = config.mineru.api_token
@@ -334,8 +392,7 @@ class MinerUClient:
                 for chunk in response.iter_content(chunk_size=8192):
                     tmp.write(chunk)
 
-            with zipfile.ZipFile(tmp_path, 'r') as zf:
-                zf.extractall(output_dir)
+            self._extract_archive(tmp_path, output_dir)
 
             self._remove_temporary_file(tmp_path)
             return self._find_md_file(output_dir)
@@ -361,8 +418,7 @@ class MinerUClient:
                     timeout=120,
                 )
                 if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
-                    with zipfile.ZipFile(tmp_path, 'r') as zf:
-                        zf.extractall(output_dir)
+                    self._extract_archive(tmp_path, output_dir)
                     self._remove_temporary_file(tmp_path)
                     return self._find_md_file(output_dir)
                 else:
@@ -401,8 +457,7 @@ class MinerUClient:
                         if path.is_file()
                     }
                     try:
-                        with zipfile.ZipFile(tmp_path, 'r') as zf:
-                            zf.extractall(output_dir)
+                        self._extract_archive(tmp_path, output_dir)
                     except FileNotFoundError:
                         self._remove_temporary_file(tmp_path)
                         # A late member path can fail after the result Markdown is durable.
@@ -459,8 +514,7 @@ class MinerUClient:
                 client.DownloadFile(zip_url, tmp_path)
 
                 if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
-                    with zipfile.ZipFile(tmp_path, 'r') as zf:
-                        zf.extractall(output_dir)
+                    self._extract_archive(tmp_path, output_dir)
                     self._remove_temporary_file(tmp_path)
                     return self._find_md_file(output_dir)
 
@@ -490,8 +544,7 @@ class MinerUClient:
                     timeout=120
                 )
                 if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
-                    with zipfile.ZipFile(tmp_path, 'r') as zf:
-                        zf.extractall(output_dir)
+                    self._extract_archive(tmp_path, output_dir)
                     self._remove_temporary_file(tmp_path)
                     return self._find_md_file(output_dir)
                 last_error = RuntimeError(

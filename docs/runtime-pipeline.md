@@ -46,7 +46,7 @@ The document-language mapping is owned once by ocr_flow.config:
 
 | Engine | --lang en | --lang zh | Manifest |
 | --- | --- | --- | --- |
-| paddle | models/config_en.txt | models/config_chinese.txt | umiocr-paddle-neoengine-v1.4.json |
+| paddle | models/config_en.txt | models/config_chinese.txt | umiocr-paddle-neoengine-v1.4.2.json |
 | rapid | English | 简体中文 | umiocr-rapid-v2.1.5.json |
 
 Existing configurations that omit engine remain Paddle. When Rapid is selected,
@@ -56,12 +56,15 @@ them through GET /api/doc/get_options before OCR uploads begin.
 
 ### Project-local NeoEngine Paddle baseline
 
-The default Paddle profile is `chapterv/umi-paddle-neoengine` version 1.4 at
-commit `e1acb9d22a8b4f343cd0c6d18dec694d809d02e7`. It runs in the plugin-local
+The default Paddle profile is `chapterv/umi-paddle-neoengine` version 1.4.2 at
+commit `6a87fc4145a13b09104836cb22cf05125b143041`. It runs in the plugin-local
 Python 3.12.10 environment with `paddlepaddle==3.2.1`, `paddleocr==3.7.0`, and
 `onnxruntime==1.26.0`; `CPUExecutionProvider` is the supported baseline. The
-The `PP-OCRv6_medium_det_onnx` and `PP-OCRv6_medium_rec_onnx` models must be
-present in the plugin's `paddlex/` cache before a run is considered ready.
+`PP-OCRv6_medium_det_onnx`, `PP-OCRv6_medium_rec_onnx`, and
+`PP-LCNet_x1_0_doc_ori_onnx` models must be present in the plugin's package-local
+`paddlex/` cache before a run is considered ready. The UTF-8 launcher accepts
+both portable and conventional virtual-environment layouts, and the OCR pipe
+logs non-JSON stdout noise while waiting for the first valid JSON response.
 
 Verify both the immutable files and the dynamic environment before starting
 the host. The plugin-owned status command records the completed CPU environment
@@ -82,7 +85,7 @@ uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py `
 
 The generated `install_status.json` is machine-local and is not a hashed vendor
 asset. Its required path, state, model marker, and CPU/GPU backend mapping are
-declared in `umiocr-paddle-neoengine-v1.4.json`. Missing or stale status fails
+declared in `umiocr-paddle-neoengine-v1.4.2.json`. Missing or stale status fails
 readiness even when direct imports happen to succeed.
 
 The Umi host and NeoEngine plugin own Python installations separate from the

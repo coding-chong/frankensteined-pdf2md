@@ -77,13 +77,15 @@ def test_maintained_docs_share_the_paddle_ocr_v6_cpu_contract():
         )
     }
     required = (
-        "e1acb9d22a8b4f343cd0c6d18dec694d809d02e7",
+        "6a87fc4145a13b09104836cb22cf05125b143041",
+        "1.4.2",
         "3.12.10",
         "3.2.1",
         "3.7.0",
         "1.26.0",
         "PP-OCRv6_medium_det_onnx",
         "PP-OCRv6_medium_rec_onnx",
+        "PP-LCNet_x1_0_doc_ori_onnx",
         "--provider-mode cpu",
         "--provider-mode gpu",
         "install_status.py",
@@ -189,7 +191,7 @@ def test_fresh_clone_guide_contains_reproducible_paddle_v6_install_commands():
         "git clone --no-checkout https://github.com/chapterv/"
         "umi-paddle-neoengine.git $neoRoot",
         "git -C $neoRoot config core.autocrlf true",
-        "e1acb9d22a8b4f343cd0c6d18dec694d809d02e7",
+        "6a87fc4145a13b09104836cb22cf05125b143041",
         'uv venv --python 3.12.10 --seed --clear "$pluginRoot\\.venv"',
         '"paddlepaddle==3.2.1"',
         '"paddleocr==3.7.0"',
@@ -199,6 +201,7 @@ def test_fresh_clone_guide_contains_reproducible_paddle_v6_install_commands():
         'engine_config={"providers": ["CPUExecutionProvider"]}',
         "PP-OCRv6_medium_det_onnx\\inference.onnx",
         "PP-OCRv6_medium_rec_onnx\\inference.onnx",
+        "PP-LCNet_x1_0_doc_ori_onnx\\inference.onnx",
         "check-env --env cpu --backend onnxruntime --models ready",
         "上游 `setup.bat` 默认建立 Python 3.11 的 `.venv_gpu`",
     ):

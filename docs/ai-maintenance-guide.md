@@ -58,7 +58,7 @@ and documentation together.
 
 | Engine | English document value | Chinese document value | Manifest |
 | --- | --- | --- | --- |
-| paddle | models/config_en.txt | models/config_chinese.txt | umiocr-paddle-neoengine-v1.4.json |
+| paddle | models/config_en.txt | models/config_chinese.txt | umiocr-paddle-neoengine-v1.4.2.json |
 | rapid | English | 简体中文 | umiocr-rapid-v2.1.5.json |
 
 GET /api/doc/get_options is the runtime truth. A file manifest proves that the
@@ -77,11 +77,13 @@ The local output must have matching page count and extractable text. A mocked
 options response or a unit test never replaces the real layered-PDF result.
 
 The default Paddle manifest is the project-local `chapterv/umi-paddle-neoengine`
-plugin, version 1.4 at commit
-`e1acb9d22a8b4f343cd0c6d18dec694d809d02e7`, using ONNX Runtime CPU. Its dynamic
+plugin, version 1.4.2 at commit
+`6a87fc4145a13b09104836cb22cf05125b143041`, using ONNX Runtime CPU. Its dynamic
 readiness boundary is plugin-local Python 3.12.10, PaddlePaddle 3.2.1,
 PaddleOCR 3.7.0, ONNX Runtime 1.26.0, `CPUExecutionProvider`, and the cached
-`PP-OCRv6_medium_det_onnx` and `PP-OCRv6_medium_rec_onnx` models:
+`PP-OCRv6_medium_det_onnx`, `PP-OCRv6_medium_rec_onnx`, and
+`PP-LCNet_x1_0_doc_ori_onnx` models. The manifest also binds the UTF-8 launcher,
+portable and conventional Python layouts, and first-valid-JSON OCR pipe recovery:
 
 ~~~powershell
 & "<umi-root>\UmiOCR-data\plugins\win_x64_PaddleOCR_Py\.venv\Scripts\python.exe" `
