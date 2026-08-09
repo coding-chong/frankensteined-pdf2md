@@ -208,11 +208,18 @@ Result ZIP retrieval belongs to ocr_flow.steps.mineru. The committed chain is:
 4. Windows .NET WebClient, preserving Windows proxy and certificate policy;
 5. Windows PowerShell, preserving its normal policy.
 
-These are alternatives for the result ZIP only. curl and PowerShell are
-opportunistic Windows tools, not installation prerequisites. Never remove
-global proxy variables, disable certificate validation, use `curl -k`, or add
-an unverified DNS workaround. A network that needs those changes is
-unsupported or `UNVERIFIED` until a separately evidenced secure design exists.
+These are alternatives for the result ZIP only. Before extraction, the archive
+is moved through a short same-volume staging directory so deep Windows matrix
+paths do not turn valid members into legacy Win32 `FileNotFoundError` failures.
+The complete staged tree is preflighted before any merge: symbolic links and
+file/directory type collisions fail closed, existing Markdown/assets remain
+untouched, and regular files are replaced atomically. Markdown is merged first
+so a later nondeterministic I/O failure still leaves a recoverable conversion
+result. curl and PowerShell are opportunistic Windows tools, not installation
+prerequisites. Never remove
+global proxy variables, disable certificate validation, use `curl -k`, or add an unverified DNS workaround. A network that
+needs those changes is unsupported or `UNVERIFIED` until a separately
+evidenced secure design exists.
 
 Markdown image localization belongs to ocr_flow.steps.image_download. It first
 copies relative image assets already extracted from the result package, then

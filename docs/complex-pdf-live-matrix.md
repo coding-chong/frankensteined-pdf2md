@@ -4,8 +4,8 @@ This is the required real-service regression matrix for release operators and
 maintainers of coding-chong/frankensteined-pdf2md. It is not part of a normal
 user conversion and does not mock Umi-OCR, BabelDOC, the translation provider,
 Ghostscript, or MinerU. Read [fresh-clone-setup.md](fresh-clone-setup.md) for
-the installation and CPU-only Rapid preparation sequence before running
-anything in this page.
+the installation and local validation sequence for the selected Paddle or
+Rapid engine before running anything on this page.
 
 ## Tracked Assets and Offline Checks
 
@@ -48,30 +48,40 @@ Each case submits six MinerU parts. One BabelDOC profile therefore consumes
 24 MinerU conversions and two translation requests. This is an API-cost gate,
 not a test to run casually or as a substitute for offline pytest.
 
-## CPU-only Rapid Run
+## CPU-only Paddle or Rapid Run
 
-Before the command below:
+Before either command below:
 
 1. The user explicitly approves the 24 MinerU conversions and two translation
    requests for this profile.
-2. Rapid v2.1.5 passes both the selected manifest and layered-PDF local smoke.
+2. The selected Umi-OCR engine passes its manifest, environment when required,
+   and layered-PDF local smoke. Paddle additionally requires the NeoEngine
+   1.4.2 CPU provider/model/pipe-recovery gates.
 3. BabelDOC cpu-safe setup and smoke pass.
 4. Ghostscript is a real executable that has passed a local compression smoke.
 
-Use cpu-safe plus an explicit Rapid executable and engine:
+The default OCR V6 matrix uses cpu-safe plus an explicit Paddle executable and
+engine:
 
 ~~~powershell
 $credentialConfig = "$env:USERPROFILE\.ocr-flow\config.toml"
+$umiRoot = "C:\Tools\Umi-OCR_Paddle_v2.1.5"
+uv run --locked --extra windows --extra dev python scripts/run_live_complex_pdf_matrix.py --config $credentialConfig --ghostscript "C:\path\to\gswin64c.exe" --umiocr "$umiRoot\Umi-OCR.exe" --umiocr-engine paddle --profile cpu-safe --output output\live_complex_pdf_matrix
+~~~
+
+Rapid remains an independent optional matrix. Replace `$umiRoot` with its
+verified v2.1.5 root and use `--umiocr-engine rapid`:
+
+~~~powershell
 $umiRoot = "C:\Tools\Umi-OCR_Rapid_v2.1.5"
 uv run --locked --extra windows --extra dev python scripts/run_live_complex_pdf_matrix.py --config $credentialConfig --ghostscript "C:\path\to\gswin64c.exe" --umiocr "$umiRoot\Umi-OCR.exe" --umiocr-engine rapid --profile cpu-safe --output output\live_complex_pdf_matrix
 ~~~
 
 The runner reads the credential config but never modifies it. It creates a
 temporary isolated config, clears babeldoc.path, carries the selected
-umiocr.engine into that config, and selects the managed cpu-safe runtime. A
-Rapid executable without --umiocr-engine rapid would otherwise inherit the
-source config engine, so the explicit flag is required for a portable Rapid
-override.
+umiocr.engine into that config, and selects the managed cpu-safe runtime. An
+executable override without the matching `--umiocr-engine` can inherit the
+source config's other engine, so the explicit paired flags are required.
 
 CPU-only machines must not use --all-profiles. That option runs both cpu-safe
 and Windows DirectML, is Windows-only, and doubles the remote service work.
@@ -112,4 +122,8 @@ corresponding PDFs:
 
 Exit code zero is not sufficient evidence. A failed run must keep its reports,
 state, PDFs, Markdown, and contact sheets for diagnosis; never hide a failed
-service prerequisite behind a skip or mock result.
+service prerequisite behind a skip or mock result. If only some MinerU parts
+fail, rerun the original process against the same case output with
+`--recovery retry`; do not restart successful paid parts. Deep Windows result
+paths are handled by short same-volume ZIP staging and a preflighted merge,
+but the retained state remains the recovery source of truth.

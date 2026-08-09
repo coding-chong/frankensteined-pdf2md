@@ -363,9 +363,10 @@ Ghostscript 被调用不代表其输出一定进入 MinerU。每个候选都会�
 ### 统一部署预检
 
 受支持机器不是“只能跑其中一种工作流”的分级概念。它必须以标准 Windows 用户
-完成文字/扫描、翻译/不翻译、Rapid CPU OCR、portable Ghostscript、cpu-safe
-BabelDOC，以及第 7 节完整四案例矩阵。管理员权限只能用于可替换的一次性系统
-安装；正常安装、预检和运行不得依赖提权。
+完成文字/扫描、翻译/不翻译、默认 Paddle OCR V6 CPU、portable Ghostscript、
+cpu-safe BabelDOC，以及第 7 节完整四案例矩阵。Rapid 是独立可选引擎；只有声明
+Rapid 支持时才额外要求其 local smoke 和矩阵。管理员权限只能用于可替换的一次性
+系统安装；正常安装、预检和运行不得依赖提权。
 
 Ghostscript 无管理员路径是把官方发行版解压到用户可写目录（例如
 `%LOCALAPPDATA%\OCR-Flow\Ghostscript\`），然后在配置向导中把
@@ -406,11 +407,15 @@ $credentialConfig = "$env:USERPROFILE\.ocr-flow\config.toml"
 uv run --locked --extra windows ocr-flow process test_assets\test_page_text.pdf -o output\text-smoke --config $credentialConfig --non-interactive --pdf-type text --lang en --no-translate --no-open-output -v
 ~~~
 
-扫描 PDF、Rapid CPU-only、不翻译：
+扫描 PDF、已选 CPU OCR 引擎、不翻译：
 
 ~~~powershell
-uv run --locked --extra windows ocr-flow process test_assets\test_page_scanned.pdf -o output\rapid-scan-smoke --config $credentialConfig --non-interactive --pdf-type scanned --lang en --no-translate --no-open-output -v
+uv run --locked --extra windows ocr-flow process test_assets\test_page_scanned.pdf -o output\scan-smoke --config $credentialConfig --non-interactive --pdf-type scanned --lang en --no-translate --no-open-output -v
 ~~~
+
+默认配置应选择已通过第 4 节完整校验的 Paddle NeoEngine 1.4.2；使用 Rapid 时必须
+同时切换 config 中的 engine、language 和 executable，并先停止占用 1224 端口的
+Paddle 服务。
 
 翻译流程额外需要完成 cpu-safe BabelDOC setup 和翻译 provider key：
 
@@ -438,7 +443,11 @@ MinerU 转换结束后，ocr_flow/steps/mineru.py 下载的是结果 ZIP。该�
 CA 验证。标准方法继承系统/环境 proxy；若限定的 OpenXLab CDN 在本机 DNS 下
 发生 TLS EOF，最后的 direct-CDN 回退可通过 Google DoH 获得 global IPv4，并用
 `curl --resolve` 保持原主机名/SNI/证书验证，只允许 HTTPS 跳转。curl 和
-PowerShell 是机会性回退；pythonnet 只为 .NET WebClient 回退提供能力。
+PowerShell 是机会性回退；pythonnet 只为 .NET WebClient 回退提供能力。下载完成后，
+ZIP 会先在同一磁盘的短路径暂存目录完整解压，再合并到可能很深的 case/part 输出树。
+合并前会递归拒绝符号链接和文件/目录类型冲突，不会为新结果删除已有目录；普通文件
+使用原子替换且 Markdown 优先合并。这样可避免旧 Win32 深路径触发的
+`FileNotFoundError`，同时保留 `.state.json` 驱动的失败分段恢复。
 
 之后 ocr_flow/steps/image_download.py 处理 Markdown 图片，这不是 ZIP 下载
 回退：它优先从已解压的 MinerU 结果包复制本地图片；只有 Markdown 出现远程 HTTP
@@ -463,12 +472,18 @@ direct-CDN 回退会仅对该下载绕过 proxy；企业策略禁止直连时应
 
 四个 case 是 text_no_translate、scan_no_translate、
 text_translate_uncompressed 和 scan_translate_compressed。先重复第 4 节的
-离线验证。完整 CPU/Rapid 运行会为一个 cpu-safe profile 消耗 24 个 MinerU
-转换和两个翻译请求，因此只能在账户额度和费用获得明确批准后执行：
+离线验证。默认 CPU/Paddle 或独立 Rapid 的单个 cpu-safe profile 都会消耗
+24 个 MinerU 转换和两个翻译请求，因此只能在账户额度和费用获得明确批准后执行。默认
+Paddle OCR V6 命令是：
 
 ~~~powershell
-uv run --locked --extra windows --extra dev python scripts/run_live_complex_pdf_matrix.py --config $credentialConfig --ghostscript "C:\path\to\gswin64c.exe" --umiocr "$umiRoot\Umi-OCR.exe" --umiocr-engine rapid --profile cpu-safe --output output\live_complex_pdf_matrix
+$umiRoot = "C:\Tools\Umi-OCR_Paddle_v2.1.5"
+uv run --locked --extra windows --extra dev python scripts/run_live_complex_pdf_matrix.py --config $credentialConfig --ghostscript "C:\path\to\gswin64c.exe" --umiocr "$umiRoot\Umi-OCR.exe" --umiocr-engine paddle --profile cpu-safe --output output\live_complex_pdf_matrix
 ~~~
+
+验证 Rapid 时改用其 v2.1.5 根目录和 `--umiocr-engine rapid`。引擎参数必须与 executable
+配对，不能让临时隔离配置继承另一个引擎。失败后保留同一 case 输出和 `.state.json`，
+使用 `--recovery retry` 只重试失败 MinerU 分段，不重新消费成功分段。
 
 完成后查看 runner-summary.json、每个 case 的 .state.json、Markdown、PDF、
 live-matrix-report.json、live-progress.log 和 visual_review contact sheets。

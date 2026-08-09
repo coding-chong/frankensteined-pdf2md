@@ -101,7 +101,12 @@ uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py `
 The generated `install_status.json` is part of Umi launcher readiness but is
 not committed or checksum-pinned. Its required fields and provider backend
 mapping live in the NeoEngine manifest; the verifier must compare the status
-record with direct imports, provider observations, and real model files.
+record with direct imports, provider observations, and real model files. The
+OCR pipe behavioral probe may import only the package-pinned `PPOCR_api.py`
+after rechecking its byte count and SHA-256. Launch that probe with the project
+interpreter's isolated mode (`python -I`) and a trusted project working
+directory; a runtime-controlled `PYTHONPATH`, user site, or `sitecustomize.py`
+must not execute before the pinned client.
 
 The host launch boundary in `ocr_flow/self_check.py` must remove inherited
 `PYTHONHOME` and `PYTHONPATH` while preserving the rest of the environment.
@@ -160,7 +165,11 @@ MinerU has two separate data flows:
    curl, .NET WebClient, and PowerShell inherit proxy policy. A final
    OpenXLab-only direct fallback may resolve a global IPv4 through HTTPS DoH
    and use `curl --resolve`; it must preserve hostname/SNI validation, restrict
-   redirects to HTTPS, and never log the signed URL or resolved address.
+   redirects to HTTPS, and never log the signed URL or resolved address. ZIPs
+   are extracted in a short same-volume staging directory before entering a
+   deep Windows result tree. Preflight every staged descendant, reject symbolic
+   links and file/directory type collisions before mutation, replace regular
+   files atomically, and merge Markdown first for recoverable late I/O errors.
 2. Markdown image localization copies local extracted assets first, then
    downloads only remote HTTP image URLs.
 
@@ -188,8 +197,10 @@ resource counts; never pass raw runtime messages into JSON because those may
 contain user paths or commands.
 
 The supported baseline is unified. A standard Windows user must complete all
-normal workflows and the four-case CPU/Rapid matrix with 24 MinerU parts, two
-translations, retained evidence, secret scan, and human visual review.
+normal workflows and the four-case default CPU/Paddle matrix with 24 MinerU
+parts, two translations, retained evidence, secret scan, and human visual
+review. Rapid remains an independently validated optional engine; claiming
+Rapid support requires its own local smoke and explicit-engine matrix.
 Portable Ghostscript is the replaceable no-admin path. Different Windows
 kernels, physical no-GPU hardware, real EDR, enterprise TLS inspection, and
 genuine low-memory hardware stay `UNVERIFIED` until exercised. Never convert
@@ -203,11 +214,15 @@ acceleration and must not be selected by inference from host hardware.
 
 The live matrix receives a sanitized temporary config. An explicit Umi-OCR
 executable override must be paired with the intended engine override so its
-isolated config cannot silently retain Paddle. The CPU/Rapid command uses:
+isolated config cannot silently retain another engine. The default Paddle OCR
+V6 command uses:
 
 ~~~powershell
-uv run --locked --extra windows --extra dev python scripts/run_live_complex_pdf_matrix.py --config <credential-config> --ghostscript <gswin64c.exe> --umiocr <rapid-root>\Umi-OCR.exe --umiocr-engine rapid --profile cpu-safe
+uv run --locked --extra windows --extra dev python scripts/run_live_complex_pdf_matrix.py --config <credential-config> --ghostscript <gswin64c.exe> --umiocr <paddle-root>\Umi-OCR.exe --umiocr-engine paddle --profile cpu-safe
 ~~~
+
+For the independent Rapid matrix, use its verified root and
+`--umiocr-engine rapid`.
 
 The four cases are text_no_translate, scan_no_translate,
 text_translate_uncompressed, and scan_translate_compressed. One profile makes

@@ -155,11 +155,19 @@ The UMI manifest verifies its executable, launcher, and English/Chinese model
 configurations; it does not treat a large vendor binary as an undocumented
 source fork.
 
-### CPU-only Rapid Runtime
+### CPU-only Paddle and Optional Rapid Runtimes
 
-The Paddle command above selects the backward-compatible default manifest. It
-does not validate Rapid. A CPU-only Windows host must use the separate Rapid
-v2.1.5 manifest and service contract:
+The Paddle command above selects the default NeoEngine 1.4.2 manifest and CPU
+provider contract. It does not validate Rapid. A CPU-only Windows host can use
+the default Paddle OCR V6 runtime when its static, environment, model,
+pipe-recovery, and layered-PDF gates pass:
+
+~~~powershell
+uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path C:\Tools\Umi-OCR_Paddle_v2.1.5 --engine paddle --check-environment --provider-mode cpu
+uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --input test_assets\test_page_scanned.pdf --output output\paddle-local-smoke\result.pdf --umiocr C:\Tools\Umi-OCR_Paddle_v2.1.5\Umi-OCR.exe --engine paddle --lang en --provider-mode cpu
+~~~
+
+Rapid remains a separate optional v2.1.5 manifest and service contract:
 
 ~~~powershell
 uv run --locked --extra windows python scripts/verify_umiocr_runtime.py --path C:\Tools\Umi-OCR_Rapid_v2.1.5 --engine rapid
@@ -169,5 +177,5 @@ uv run --locked --extra windows python scripts/validate_umiocr_layered_pdf.py --
 Rapid accepts English and 简体中文 through the document API, whereas Paddle
 uses model path values. The config engine field and GET /api/doc/get_options
 readiness check prevent the two values from being interchanged. This Umi-OCR
-contract is independent of BabelDOC: Rapid performs scanned OCR; cpu-safe
-BabelDOC performs translation layout inference without DirectML.
+contract is independent of BabelDOC: the selected Umi engine performs scanned
+OCR; cpu-safe BabelDOC performs translation layout inference without DirectML.

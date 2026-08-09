@@ -286,14 +286,17 @@ uv run --locked --extra windows ocr-flow process "<input.pdf>" -o "<output-dir>"
 ~~~
 
 恢复策略 `continue`、`retry`、`continue_retry` 和 `restart` 的行为，以及状态文件
-和中间产物的边界见 [运行时与输出契约](docs/runtime-pipeline.md)。
+和中间产物的边界见 [运行时与输出契约](docs/runtime-pipeline.md)。Windows 上的深层
+矩阵输出会先在同盘短路径暂存区解压 MinerU ZIP；合并前会拒绝符号链接和文件/目录
+类型冲突，并优先持久化 Markdown，避免长路径或后续 I/O 错误丢失已完成分段。
 
 ## 8. 验证完整工具链
 
-日常转换走步骤 1 到 6。若要声明 CPU-only 机器或一次发布支持完整 CPU/Rapid
+日常转换走步骤 1 到 6。若要声明 CPU-only 机器或一次发布支持完整默认 CPU/Paddle
 工作流，还必须运行真实的六页复杂 PDF 矩阵：文字/扫描件各一条不翻译和翻译路径，
-共四个 case。它会消耗 24 个 MinerU 转换和两次翻译请求，必须先获得账户额度和
-费用批准。
+共四个 case。Rapid 是独立可选引擎；声明 Rapid 支持时必须用其 manifest、local smoke
+和显式 `--umiocr-engine rapid` 另行运行矩阵。每个 profile 会消耗 24 个 MinerU 转换和
+两个翻译请求，必须先获得账户额度和费用批准。
 
 离线检查不消耗额度：
 
